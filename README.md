@@ -5,7 +5,7 @@ Web app for the reception desk's twice-daily resident welfare-check round (סב�
 ## Run it
 Open `index.html` in any modern browser (Chrome or Edge). There's no install and no build step.
 
-`app.html` is the same page without the outer `<html>` skeleton. It's the source used for the hosted preview. After editing it, rebuild `index.html` with `./build.sh`.
+`app.html` is the same page without the outer `<html>` skeleton. It's the source used for the hosted preview. After editing it, rebuild with `./build.sh` (it writes `index.html` and the GitHub Pages copy in `docs/`).
 
 ## Status: prototype
 - All resident data is **made up** (about 130 fictional residents in buildings א, ב and ג).
