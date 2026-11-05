@@ -689,8 +689,9 @@ const PERMS = {
   'res.edit': ['manager', 'admin'],
   'res.create': ['admin'],
   'clinical.view': ['shift_manager', 'nurse', 'manager', 'admin'],
-  'meds.view': ['shift_manager', 'nurse', 'manager', 'admin'],
-  'meds.run': ['shift_manager', 'nurse', 'admin'],
+  'clinical.vitals': ['shift_manager', 'nurse', 'admin'],
+  'meds.view': ['shift_manager', 'nurse', 'manager'],
+  'meds.run': ['shift_manager', 'nurse'],
   'social.view': ['shift_manager', 'nurse', 'social_worker', 'manager', 'admin'],
   'social.edit': ['social_worker', 'manager', 'admin'],
   'mov.view': ['reception', 'shift_manager', 'nurse', 'social_worker', 'manager', 'admin'],
@@ -711,6 +712,8 @@ const PERMS = {
 };
 function can(role, action) { return (PERMS[action] || []).includes(role); }
 const may = action => !!me() && can(me().role, action);
+// vitals from #/meds follow meds.run; from the resident file follow clinical.vitals
+const mayVitals = () => UI.route === 'meds' ? may('meds.run') : may('clinical.vitals');
 
 /* ---------- domain helpers ---------- */
 const res = id => byId(S.residents, id);
@@ -1296,7 +1299,7 @@ function tabNursing(r) {
   const byType = {}; for (const v of vit) (byType[v.type] ||= []).length < 5 && byType[v.type].push(v);
   return `<h3 style="margin-top:0">טבלת מתן תרופות להיום (${fD(d)})</h3>
   ${orders.length ? `<div class="tbl"><table><thead><tr><th>תרופה</th><th>מינון</th><th>דרך מתן</th>${times.map(t => `<th class="n">${t}</th>`).join('')}<th>לפי הצורך</th></tr></thead><tbody>${orders.map(o => `<tr><td><b>${esc(o.drug)}</b></td><td>${esc(o.dose)}</td><td>${esc(o.route)}</td>${times.map(t => cell(o, t)).join('')}<td>${o.prn ? 'כן' : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">אין הוראות תרופות פעילות.</p>'}
-  <div class="actions" style="margin:16px 0 8px"><h3 style="margin:0">מדדים – 5 אחרונים</h3>${may('meds.run') ? `<button class="btn sm pri" data-act="vitals" data-rid="${r.id}">הזנת מדדים</button>` : ''}</div>
+  <div class="actions" style="margin:16px 0 8px"><h3 style="margin:0">מדדים – 5 אחרונים</h3>${may('clinical.vitals') ? `<button class="btn sm pri" data-act="vitals" data-rid="${r.id}">הזנת מדדים</button>` : ''}</div>
   ${vit.length ? `<div class="grid2">${Object.entries(byType).map(([t, list]) => `<div class="card pad"><b>${VITALS[t].name}</b> <span class="muted">${VITALS[t].unit}</span><ul class="hist" style="margin-top:6px">${list.map(v => `<li class="num">${VITALS[t].ok(v.value) ? esc(v.value) : `<b style="color:var(--danger)">${esc(v.value)} ⚠</b>`} <small>· ${fDT(v.at)}</small></li>`).join('')}</ul></div>`).join('')}</div>` : '<p class="muted">לא נמדדו מדדים.</p>'}`;
 }
 
@@ -1704,6 +1707,7 @@ function viewMeds() {
   <p class="hint">הדגמה בלבד: אין כאן מרשמים, בית מרקחת או מלאי. שמות התרופות פיקטיביים.</p>`;
 }
 function panelVitals(p) {
+  if (!mayVitals()) return null;
   const r = res(p.rid); if (!r) return null;
   return `<div class="p-h"><div><h2>מדדים – ${esc(fullName(r))}</h2><div class="meta">דירה ${esc(r.apartment)} · ערכים חריגים מסומנים באדום</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
   <div class="p-b"><form class="form" data-submit="vitals" data-rid="${r.id}" autocomplete="off">
@@ -1890,18 +1894,19 @@ const ACT = {
   'ev-action-waive': el => { const e = byId(S.events, el.dataset.id), a = e.review.actions.find(x => x.id === el.dataset.a); a.waived = el.checked; stamp(e); refresh(); },
   // meds
   'meds-round': el => { UI.f.meds.round = el.dataset.v; UI.open.ng = UI.open.undo = null; renderMain(); },
-  'dose-give': el => { const { o, t } = el.dataset; if (doseRec(o, today(), t)) return toast('המנה כבר סומנה – כדי לשנות, בטלו קודם'); S.med_admin.push({ id: uid('MA'), order_id: o, date: today(), time: t, status: 'given', reason: null, note: '', at: nowIso(), by: me().id, history: [] }); save(); renderMain(); },
+  'dose-give': el => { if (!may('meds.run')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); const { o, t } = el.dataset; if (doseRec(o, today(), t)) return toast('המנה כבר סומנה – כדי לשנות, בטלו קודם'); S.med_admin.push({ id: uid('MA'), order_id: o, date: today(), time: t, status: 'given', reason: null, note: '', at: nowIso(), by: me().id, history: [] }); save(); renderMain(); },
   'dose-ng-open': el => { UI.open.ng = el.dataset.k; UI.open.undo = null; renderMain(); setTimeout(() => $('#ng-reason')?.focus(), 0); },
   'dose-ng-cancel': () => { UI.open.ng = null; renderMain(); },
   'dose-ng': el => {
+    if (!may('meds.run')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
     const { o, t } = el.dataset, reason = $('#ng-reason').value, note = $('#ng-note').value.trim();
     if (!reason) { const err = $('#ng-err'); if (err) err.textContent = 'חובה לבחור סיבה'; $('#ng-reason').focus(); return; } if (reason === 'אחר' && !note) { const err = $('#ng-err'); if (err) err.textContent = 'בסיבה "אחר" כתבו הערה'; $('#ng-note').focus(); return; }
     if (doseRec(o, today(), t)) return; S.med_admin.push({ id: uid('MA'), order_id: o, date: today(), time: t, status: 'not_given', reason, note, at: nowIso(), by: me().id, history: [] }); UI.open.ng = null; save(); renderMain();
   },
   'dose-undo-open': el => { UI.open.undo = el.dataset.k; UI.open.ng = null; renderMain(); setTimeout(() => $('#dose-undo-reason')?.focus(), 0); },
   'dose-undo-cancel': () => { UI.open.undo = null; renderMain(); },
-  'dose-undo': el => { const reason = reqVal('#dose-undo-reason', '#dose-undo-err'); if (!reason) return; const a = doseRec(el.dataset.o, today(), el.dataset.t); if (!a) return; a.history.push({ status: a.status, at: a.at, by: a.by }); Object.assign(a, { status: 'undone', undo_reason: reason, undone_at: nowIso(), undone_by: me().id }); UI.open.undo = null; save(); renderMain(); toast('הסימון בוטל'); },
-  vitals: el => openPanel({ type: 'vitals', rid: el.dataset.rid }),
+  'dose-undo': el => { if (!may('meds.run')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); const reason = reqVal('#dose-undo-reason', '#dose-undo-err'); if (!reason) return; const a = doseRec(el.dataset.o, today(), el.dataset.t); if (!a) return; a.history.push({ status: a.status, at: a.at, by: a.by }); Object.assign(a, { status: 'undone', undo_reason: reason, undone_at: nowIso(), undone_by: me().id }); UI.open.undo = null; save(); renderMain(); toast('הסימון בוטל'); },
+  vitals: el => { if (!mayVitals()) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); openPanel({ type: 'vitals', rid: el.dataset.rid }); },
   // reports
   'rep-tab': el => { UI.f.reports.tab = el.dataset.v; renderMain(); },
   'calls-csv': () => exportCallsCsv(),
@@ -1972,6 +1977,7 @@ const SUB = {
   },
   'ev-addendum': form => { const d = readForm(form); if (!d.text) return; const e = byId(S.events, form.dataset.id); e.addenda.push({ text: d.text, at: nowIso(), by: me().id }); stamp(e); refresh(); },
   vitals: form => {
+    if (!mayVitals()) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
     const d = readForm(form), r = res(form.dataset.rid), e = {}; const t = nowIso(); let n = 0;
     if (d.bp && !/^\d{2,3}\/\d{2,3}$/.test(d.bp)) e.bp = 'בפורמט 120/80'; for (const k of ['pulse', 'temp', 'sat', 'weight']) if (d[k] && isNaN(+d[k])) e[k] = 'מספר בלבד';
     if (!Object.keys(e).length && !Object.keys(VITALS).some(k => d[k])) e.bp = 'הזינו לפחות מדד אחד';
