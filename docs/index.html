@@ -1687,7 +1687,7 @@ function viewMeds() {
       ${doses.map(({ o, t }) => { const a = doseRec(o.id, d, t), key = `${o.id}|${t}`;
         let ctl;
         if (away) ctl = '<span class="hint">לא לחלוקה – הדייר/ת מחוץ לבית</span>';
-        else if (!a) ctl = !canRun ? '<span class="chip">ממתין</span>' : UI.open.ng === key ? `<span class="confirm">סיבה: <select id="ng-reason" aria-label="סיבה">${opt('', 'בחרו…', '')}${NOT_GIVEN.map(x => opt(x, x, '')).join('')}</select><input id="ng-note" type="text" placeholder="הערה (חובה ב"אחר")" aria-label="הערה"><button class="btn sm danger" data-act="dose-ng" data-o="${o.id}" data-t="${t}">שמירה</button><button class="btn sm" data-act="dose-ng-cancel">ביטול</button><span class="err" id="ng-err"></span></span>`
+        else if (!a) ctl = !canRun ? '<span class="chip">ממתין</span>' : UI.open.ng === key ? `<span class="confirm">סיבה: <select id="ng-reason" aria-label="סיבה">${opt('', 'בחרו…', '')}${NOT_GIVEN.map(x => opt(x, x, '')).join('')}</select><input id="ng-note" type="text" placeholder="הערה (חובה בסיבה ״אחר״)" aria-label="הערה"><button class="btn sm danger" data-act="dose-ng" data-o="${o.id}" data-t="${t}">שמירה</button><button class="btn sm" data-act="dose-ng-cancel">ביטול</button><span class="err" id="ng-err"></span></span>`
           : `<button class="btn sm ok" data-act="dose-give" data-o="${o.id}" data-t="${t}">ניתן</button><button class="btn sm" data-act="dose-ng-open" data-k="${key}">לא ניתן</button>`;
         else ctl = `${a.status === 'given' ? `<span class="chip ok">ניתן ${fT(a.at)} · ${esc(uname(a.by))}</span>` : `<span class="chip red">לא ניתן: ${esc(a.reason)}${a.note ? ' – ' + esc(a.note) : ''}</span>`}
           ${canRun ? (UI.open.undo === key ? `<span class="confirm">סיבת ביטול: <input id="dose-undo-reason" type="text" aria-label="סיבת ביטול"><button class="btn sm danger" data-act="dose-undo" data-o="${o.id}" data-t="${t}">בטל</button><button class="btn sm" data-act="dose-undo-cancel">חזרה</button><span class="err" id="dose-undo-err"></span></span>` : `<button class="btn sm ghost" data-act="dose-undo-open" data-k="${key}">ביטול</button>`) : ''}`;
@@ -1894,7 +1894,7 @@ const ACT = {
   'dose-ng-cancel': () => { UI.open.ng = null; renderMain(); },
   'dose-ng': el => {
     const { o, t } = el.dataset, reason = $('#ng-reason').value, note = $('#ng-note').value.trim();
-    if (!reason) { $('#ng-err').textContent = 'חובה לבחור סיבה'; $('#ng-reason').focus(); return; } if (reason === 'אחר' && !note) { $('#ng-err').textContent = 'בסיבה "אחר" כתבו הערה'; $('#ng-note').focus(); return; }
+    if (!reason) { const err = $('#ng-err'); if (err) err.textContent = 'חובה לבחור סיבה'; $('#ng-reason').focus(); return; } if (reason === 'אחר' && !note) { const err = $('#ng-err'); if (err) err.textContent = 'בסיבה "אחר" כתבו הערה'; $('#ng-note').focus(); return; }
     if (doseRec(o, today(), t)) return; S.med_admin.push({ id: uid('MA'), order_id: o, date: today(), time: t, status: 'not_given', reason, note, at: nowIso(), by: me().id, history: [] }); UI.open.ng = null; save(); renderMain();
   },
   'dose-undo-open': el => { UI.open.undo = el.dataset.k; UI.open.ng = null; renderMain(); setTimeout(() => $('#dose-undo-reason')?.focus(), 0); },
