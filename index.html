@@ -1198,6 +1198,8 @@ function savePersonal(r, form) {
   else if (pref) pref.to = addDays(today(), -1);
   stamp(r); syncRounds(r.id);
   const isCaregiver = r.living.arrangement === 'with_caregiver';
+  const cb = curBenefit(r);
+  if (cb && wasCaregiver !== isCaregiver) { cb.foreign_worker = isCaregiver; if (!isCaregiver) cb.agency = ''; stamp(cb); }
   toast(wasCaregiver !== isCaregiver ? `נשמר. שדה "עובד זר" בקצבאות עודכן ל-${isCaregiver ? 'כן' : 'לא'}.` : 'הפרטים נשמרו');
   return true;
 }
