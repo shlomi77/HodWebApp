@@ -1247,7 +1247,7 @@ function tabBenefits(r, ed) {
     <div data-when="ltc_eligible:on" class="form">
       <div class="frow">${fld('רמה', `<select name="level">${opt('', 'בחרו…', x.level)}${[1, 2, 3, 4, 5, 6].map(n => opt(n, n, x.level)).join('')}</select>`, 'level', 1)}
         ${fld('רמת זכאות', `<select name="eligibility">${opt('', 'בחרו…', x.eligibility)}${opt('full', 'מלאה', x.eligibility)}${opt('partial', 'חלקית', x.eligibility)}</select>`, 'eligibility', 1)}
-        ${fld('שעות סיעוד (שבועיות)', `<input name="care_hours_weekly" type="number" min="0" max="60" value="${esc(x.care_hours_weekly ?? '')}">`, 'care_hours_weekly', 0, '0–60')}</div>
+        ${fld('שעות סיעוד (שבועיות)', `<input name="care_hours_weekly" type="number" value="${esc(x.care_hours_weekly ?? '')}">`, 'care_hours_weekly', 0, '0–60')}</div>
       <div class="frow">${fld('אופן קבלה', `<select name="receipt">${opt('company', 'חברת סיעוד', x.receipt || 'company')}${opt('cash', 'גמלה כספית', x.receipt)}</select>`, 'receipt')}
         <div data-when="receipt:company">${fld('שם חברת הסיעוד', `<input name="care_company" type="text" value="${esc(x.care_company || '')}">`, 'care_company')}</div></div>
       <fieldset><legend>מוצרי ספיגה</legend><div class="frow">${fld('ספק', `<input name="abs_supplier" type="text" value="${esc(x.absorbent?.supplier || '')}">`, 'abs_supplier')}${fld('סוג', `<input name="abs_type" type="text" value="${esc(x.absorbent?.type || '')}">`, 'abs_type')}${fld('כמות לחודש', `<input name="abs_qty" type="number" min="0" value="${esc(x.absorbent?.qty_month ?? '')}">`, 'abs_qty')}</div></fieldset>
