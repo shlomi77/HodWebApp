@@ -1676,15 +1676,15 @@ function viewMeds() {
   const orders = S.med_orders.filter(o => o.active && !o.prn && o.times.some(t => medRoundOf(t).id === f.round));
   const byRes = {}; for (const o of orders) { const r = res(o.resident_id); if (!r || isGone(r)) continue; (byRes[r.id] ||= []).push(o); }
   let total = 0, given = 0, ng = 0;
+  for (const rid of Object.keys(byRes)) { if (openMove(rid)) continue; for (const o of byRes[rid]) for (const t of o.times) { if (medRoundOf(t).id !== f.round) continue; total++; const a = doseRec(o.id, d, t); if (a?.status === 'given') given++; if (a?.status === 'not_given') ng++; } }
   const ids = Object.keys(byRes).map(res).filter(r => !f.q || norm(fullName(r)).includes(norm(f.q)) || norm(r.apartment).startsWith(norm(f.q))).sort(sortApt);
   const groups = {}; for (const r of ids) (groups[r.unit_id] ||= []).push(r);
   const html = Object.entries(groups).map(([uid2, rs]) => `<div class="floor-h">${esc(byId(S.units, uid2).label)}</div><div class="card">${rs.map(r => {
     const m = openMove(r.id), away = !!m;
     const doses = byRes[r.id].flatMap(o => o.times.filter(t => medRoundOf(t).id === f.round).map(t => ({ o, t }))).sort((a, b) => a.t.localeCompare(b.t));
-    if (!away) total += doses.length;
     return `<div class="mres${away ? ' away' : ''}"><div><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))}</button><br><small class="muted">דירה ${esc(r.apartment)}</small> ${away ? `<span class="chip vio">${esc(MT[m.type].name)} – לא בבית</span>` : ''}${may('clinical.view') && r.allergies.length ? ` <span class="chip red">⚠ ${esc(r.allergies.join(', '))}</span>` : ''}
       ${canRun && !away ? `<div><button class="btn sm ghost" data-act="vitals" data-rid="${r.id}">מדדים</button></div>` : ''}</div><div>
-      ${doses.map(({ o, t }) => { const a = doseRec(o.id, d, t), key = `${o.id}|${t}`; if (a?.status === 'given' && !away) given++; if (a?.status === 'not_given' && !away) ng++;
+      ${doses.map(({ o, t }) => { const a = doseRec(o.id, d, t), key = `${o.id}|${t}`;
         let ctl;
         if (away) ctl = '<span class="hint">לא לחלוקה – הדייר/ת מחוץ לבית</span>';
         else if (!a) ctl = !canRun ? '<span class="chip">ממתין</span>' : UI.open.ng === key ? `<span class="confirm">סיבה: <select id="ng-reason" aria-label="סיבה">${opt('', 'בחרו…', '')}${NOT_GIVEN.map(x => opt(x, x, '')).join('')}</select><input id="ng-note" type="text" placeholder="הערה (חובה ב"אחר")" aria-label="הערה"><button class="btn sm danger" data-act="dose-ng" data-o="${o.id}" data-t="${t}">שמירה</button><button class="btn sm" data-act="dose-ng-cancel">ביטול</button><span class="err" id="ng-err"></span></span>`
