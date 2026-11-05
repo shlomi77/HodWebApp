@@ -222,6 +222,7 @@ details.more[open]{padding-bottom:12px}
 .rrow .tel:hover{color:var(--accent)}
 .rrow .outs{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;align-items:center;padding-block:2px}
 .ob{min-height:40px;padding:0 12px;border-radius:10px;border:1.5px solid color-mix(in srgb,var(--ok) 45%,var(--line));background:var(--surface);color:var(--ok);font-weight:800;font-size:15px;white-space:nowrap}
+@container (min-width:841px){.rrow:not(.hdr){min-height:36px;padding-block:0}.rrow .tel{min-height:30px}.rrow .outs{padding-block:0}.rrow .ob{min-height:30px}}
 .ob:hover{background:var(--ok);color:var(--on-solid);border-color:var(--ok)}
 .ob.visit{border-color:color-mix(in srgb,var(--pending) 45%,var(--line));color:var(--pending)}
 .ob.visit:hover,.ob.visit[aria-expanded="true"]{background:var(--pending);color:var(--on-solid);border-color:var(--pending)}
