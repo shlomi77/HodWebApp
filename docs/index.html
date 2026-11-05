@@ -1475,7 +1475,7 @@ function setCallStatus(c, st, reason) {
 function viewCalls() {
   const u = me();
   const f = F('calls', { status: 'active', cat: '', urg: '', b: '', handler: u.role === 'maintenance' ? u.id : '', from: '', to: '', q: '', sel: [] });
-  if (UI.query.status && !f._q) { f.status = UI.query.status; f._q = 1; }
+  if (UI.query.status && f._qStatus !== UI.query.status) { f.status = UI.query.status; f._qStatus = UI.query.status; }
   const stOk = c => f.status === 'all' ? true : f.status === 'active' ? !['closed', 'cancelled'].includes(c.status) : f.status === 'overdue' ? callOverdue(c) : c.status === f.status;
   const list = S.service_calls.filter(c => stOk(c) && (!f.cat || c.category_id === f.cat) && (!f.urg || c.urgency === f.urg) && (!f.b || c.building === f.b) && (!f.handler || c.handler === f.handler)
     && (!f.from || dkey(c.opened_at) >= f.from) && (!f.to || dkey(c.opened_at) <= f.to) && (!f.q || norm(c.location + c.description + c.id + (c.resident_id ? fullName(res(c.resident_id)) : '')).includes(norm(f.q))))
