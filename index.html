@@ -358,7 +358,7 @@ details.more[open]{padding-bottom:12px}
    Core: helpers, time (Asia/Jerusalem), constants, storage, seed,
    permissions, router and rendering.
    ================================================================ */
-const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 1;
+const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 2;
 const IDLE_MS = 15 * 60 * 1000;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -411,6 +411,7 @@ const METHOD = { seen: 'ראיתי', phone: 'ענה בטלפון', visit_apartme
 const ROUND_STATUS = { open: 'פתוח', completed: 'הושלם', closed_manually: 'נסגר ידנית' };
 const SHIFT = { morning: 'בוקר', evening: 'ערב', night: 'לילה' };
 const MOVE_TYPES = [
+  { id: 'admission', name: 'כניסה לדיור', closer: null, opens_state: 'admission' }, // first movement of every resident; never changes r.status
   { id: 'hospital', name: 'אשפוז', closer: 'חזרה מאשפוז', opens_state: 'hospital' },
   { id: 'vacation', name: 'חופשה', closer: 'חזרה מחופשה', opens_state: 'vacation' },
   { id: 'away', name: 'יציאה זמנית', closer: 'חזרה', opens_state: 'away' },
@@ -517,6 +518,11 @@ function seed() {
   addMove('R035', 'away', 60 * 30, { dest: 'קניות', endMin: 60 * 27 });
   addMove('R044', 'hospital', 60 * 24 * 6, { hospital: HOSPITALS[0], endMin: 60 * 24 * 2 });
   addMove('R058', 'left', 60 * 24 * 15, { endMin: 60 * 24 * 15, dest: 'עבר/ה לגור ליד המשפחה' });
+  // admission (כניסה לדיור): every resident, 1–10 years ago, always before any other seeded movement
+  for (const r of D.residents) {
+    const start = at(addDays(today(), -(365 + Math.floor(R() * 9 * 365))), '10:00');
+    D.movements.push({ id: 'M' + (++mv), resident_id: r.id, type: 'admission', opens_state: 'admission', start, expected_return: null, end: start, closed_type: null, hospital: '', destination: '', note: '', by: 'U8', closed_by: null, ...st('U8') });
+  }
   for (const m of D.movements) { const r = byId(D.residents, m.resident_id); if (!m.end && ['hospital', 'vacation'].includes(m.opens_state)) r.status = m.opens_state; if (['left', 'deceased'].includes(m.opens_state)) r.status = m.opens_state; }
 
   D.service_categories = ['חשמל', 'אינסטלציה', 'תיקונים', 'צבע', 'מנעול', 'מיזוג אוויר', 'ריהוט', 'ניקיון', 'מעלית', 'אחר']
@@ -723,6 +729,14 @@ const g = (r, m, f) => r && r.gender === 'F' ? f : m;
 const openMove = rid => S.movements.find(m => m.resident_id === rid && !m.end && ['hospital', 'vacation', 'away'].includes(m.opens_state));
 function activePref(rid, dk = today()) { return S.preferences.find(p => p.resident_id === rid && p.type === 'no_check' && p.from <= dk && (!p.to || p.to >= dk)); }
 const isGone = r => ['left', 'deceased'].includes(r.status);
+const admissionOf = r => r && S.movements.find(m => m.resident_id === r.id && m.type === 'admission');
+const admissionDate = r => { const m = admissionOf(r); return m ? dkey(m.start) : null; };
+function tenureTxt(dk) { // length of residence since dk, as "X שנים Y חודשים"
+  if (!dk) return '—'; const t = today(); let mo = (+t.slice(0, 4) - +dk.slice(0, 4)) * 12 + (+t.slice(5, 7) - +dk.slice(5, 7)); if (t.slice(8) < dk.slice(8)) mo--; mo = Math.max(0, mo);
+  const y = Math.floor(mo / 12), m = mo % 12, yt = y === 1 ? 'שנה' : `${y} שנים`, mt = m === 1 ? 'חודש' : `${m} חודשים`;
+  return y ? (m ? `${yt} ${mt}` : yt) : mt;
+}
+const admissionMeta = r => { const d = admissionDate(r); return d ? `<span>נכנס/ה לדיור <b class="num">${fD(d)}</b> · ותק בדיור ${tenureTxt(d)}</span>` : ''; };
 const sortApt = (a, b) => unitOf(a).building.localeCompare(unitOf(b).building) || a.apartment.localeCompare(b.apartment, 'he', { numeric: true }) || a.last_name.localeCompare(b.last_name, 'he');
 const HE = new Intl.Collator('he', { sensitivity: 'base', numeric: true });
 const sortName = (a, b) => HE.compare(a.last_name, b.last_name) || HE.compare(a.first_name, b.first_name) || sortApt(a, b);
@@ -1148,7 +1162,7 @@ function viewResidentFile() {
   <div class="card">
     <div class="fhead">${avatar(r)}
       <div style="min-width:0;flex:1"><h1>${esc(fullName(r))}</h1>
-        <div class="meta"><span>דירה <b>${esc(r.apartment)}</b></span><span>קומה ${u.floor} · בניין ${u.building}</span><span>גיל ${ageOf(r.birth_date)}</span><span>קופ״ח ${esc(r.medical_fund)}</span><span class="num">${esc(r.demo_id)}</span></div>
+        <div class="meta"><span>דירה <b>${esc(r.apartment)}</b></span><span>קומה ${u.floor} · בניין ${u.building}</span><span>גיל ${ageOf(r.birth_date)}</span><span>קופ״ח ${esc(r.medical_fund)}</span><span class="num">${esc(r.demo_id)}</span>${admissionMeta(r)}</div>
         <div class="badges">${statusChip(r)} ${moveBadge(r)} ${may('clinical.view') && r.allergies?.length ? `<span class="chip red">⚠ אלרגיה: ${esc(r.allergies.join(', '))}</span>` : ''} <span class="chip">${r.living.lives_alone ? 'גר/ה לבד' : esc(ARR[r.living.arrangement] || '')}</span></div>
       </div>
       <div class="actions no-print">
@@ -1177,6 +1191,7 @@ function tabPersonal(r, ed) {
       <dt>סבבים</dt><dd>${pref ? `<span class="chip vio">לא לאיתור</span> ${esc(pref.reason)}${pref.to ? ` (עד ${fD(pref.to)})` : ''}` : 'נבדק/ת בסבבים'}</dd>
       ${clin ? `<dt>אלרגיות</dt><dd>${r.allergies.length ? `<span class="chip red">${esc(r.allergies.join(', '))}</span>` : 'לא ידוע על אלרגיות'}</dd>` : ''}</dl></div>${audit(r)}`;
   return `<form class="form" id="file-form" data-submit="file-save" data-dirty="1">
+    ${r._new ? `<div class="frow">${fld('תאריך כניסה לדיור', `<input name="admission_date" type="text" inputmode="numeric" data-date placeholder="dd/mm/yyyy" maxlength="10" value="">`, 'admission_date', 1, 'נרשם כתנועה הראשונה של הדייר/ת')}</div>` : ''}
     <div class="frow">${fld('שם פרטי', `<input name="first_name" type="text" value="${esc(r.first_name)}">`, 'first_name', 1)}${fld('שם משפחה', `<input name="last_name" type="text" value="${esc(r.last_name)}">`, 'last_name', 1)}
       ${fld('מזהה הדגמה', `<input type="text" value="${esc(r.demo_id)}" disabled>`, 'demo', 0, 'פורמט פיקטיבי, לא ת.ז אמיתית')}
       ${fld('מגדר', `<select name="gender">${opt('F', 'נקבה', r.gender)}${opt('M', 'זכר', r.gender)}</select>`, 'gender')}</div>
@@ -1206,6 +1221,7 @@ function savePersonal(r, form) {
   if (d.lives_alone === 'no' && !d.arrangement) e.arrangement = 'בחרו סוג מגורים';
   if (d.no_check && !d.pref_reason) e.pref_reason = 'כתבו סיבה';
   if ('apartment' in d && !d.apartment) e.apartment = 'שדה חובה';
+  if (r._new) { if (!d.admission_date) e.admission_date = 'שדה חובה'; else if (d.admission_date > addDays(today(), 30)) e.admission_date = 'לא יותר מ-30 יום קדימה'; else if (d.birth_date && d.admission_date < d.birth_date) e.admission_date = 'לא לפני תאריך הלידה'; }
   if (!showErrors(form, e)) return false;
   const wasCaregiver = r.living.arrangement === 'with_caregiver';
   Object.assign(r, { first_name: d.first_name, last_name: d.last_name, gender: d.gender, birth_date: d.birth_date, phone: d.phone, email: d.email, religion: d.religion, medical_fund: d.medical_fund,
@@ -1217,6 +1233,7 @@ function savePersonal(r, form) {
   const pref = activePref(r.id);
   if (d.no_check) { if (pref) Object.assign(pref, { reason: d.pref_reason, to: d.pref_to || null }); else S.preferences.push({ id: uid('PF'), resident_id: r.id, type: 'no_check', from: today(), to: d.pref_to || null, reason: d.pref_reason, by: me().id, at: nowIso() }); }
   else if (pref) pref.to = addDays(today(), -1);
+  if (r._new && !admissionOf(r)) { const st = at(d.admission_date, '10:00'); S.movements.push(stamp({ id: uid('M'), resident_id: r.id, type: 'admission', opens_state: 'admission', start: st, expected_return: null, end: st, closed_type: null, hospital: '', destination: '', note: '', by: me().id }, true)); }
   stamp(r); syncRounds(r.id);
   const isCaregiver = r.living.arrangement === 'with_caregiver';
   const cb = curBenefit(r);
@@ -1297,7 +1314,7 @@ function saveBenefits(r, form) {
 }
 function tabResMovements(r) {
   const list = S.movements.filter(m => m.resident_id === r.id).sort((a, b) => b.start.localeCompare(a.start));
-  return `${movementTable(list, false)}`;
+  return `${movementTable(list, false, r)}`;
 }
 function tabResNotes(r) {
   const list = S.handover_notes.filter(n => n.resident_id === r.id).sort((a, b) => b.at.localeCompare(a.at));
@@ -1322,10 +1339,28 @@ function tabNursing(r) {
 /* ================================================================
    Movements (תנועות)
    ================================================================ */
-function movementTable(list, withRes = true) {
+function admissionEditCell(m, r) {
+  if (!r || !may('res.edit')) return '';
+  if (UI.open.adm !== m.id) return `<button class="btn sm" data-act="adm-edit" data-id="${m.id}">עריכת תאריך</button>`;
+  return `<span class="confirm">תאריך כניסה: <input id="adm-date" type="text" inputmode="numeric" data-date placeholder="dd/mm/yyyy" maxlength="10" value="${fD(dkey(m.start))}" aria-label="תאריך כניסה לדיור"><button class="btn sm ok" data-act="adm-save" data-id="${m.id}">שמירה</button><button class="btn sm" data-act="adm-cancel">ביטול</button><span class="err" id="adm-err"></span></span>`;
+}
+function saveAdmissionDate(id) {
+  const m = byId(S.movements, id), r = m && res(m.resident_id), err = $('#adm-err'), fail = t => { if (err) err.textContent = t; $('#adm-date')?.focus(); };
+  if (!m || m.type !== 'admission') return; if (!may('res.edit')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
+  const v = ($('#adm-date')?.value || '').trim(), d = parseD(v);
+  if (!d) return fail(v ? 'תאריך בפורמט dd/mm/yyyy' : 'שדה חובה');
+  if (r.birth_date && d < r.birth_date) return fail('תאריך הכניסה לא יכול להיות לפני תאריך הלידה');
+  if (futureDate(d)) return fail('תאריך הכניסה לא יכול להיות בעתיד');
+  const first = S.movements.filter(x => x.resident_id === r.id && x.type !== 'admission').map(x => dkey(x.start)).sort()[0];
+  if (first && d > first) return fail(`הכניסה לדיור חייבת להיות לפני התנועה הראשונה (${fD(first)})`);
+  m.start = m.end = at(d, isoToWall(m.start).slice(11, 16) || '10:00'); stamp(m); UI.open.adm = null; refresh(); toast('תאריך הכניסה לדיור עודכן');
+}
+function movementTable(list, withRes = true, fileRes = null) {
   if (!list.length) return empty('אין תנועות להצגה', '');
   return `<div class="tbl"><table><thead><tr>${withRes ? '<th>דייר</th><th>דירה</th>' : ''}<th>סוג</th><th>יעד</th><th>התחלה</th><th>חזרה צפויה</th><th>סיום</th><th>נרשם ע״י</th><th></th></tr></thead><tbody>
   ${list.map(m => { const r = res(m.resident_id), over = !m.end && m.expected_return && Date.parse(m.expected_return) < Date.now(), closable = !m.end && MT[m.type].closer && may('mov.create');
+    if (m.type === 'admission') return `<tr>${withRes ? `<td><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))}</button></td><td class="n">${esc(r.apartment)}</td>` : ''}
+    <td><span class="chip ok">כניסה לדיור</span></td><td>${esc(m.note || '—')}</td><td class="n">${fD(m.start)}</td><td class="n">—</td><td class="n">—</td><td>${esc(uname(m.by))}</td><td>${admissionEditCell(m, fileRes)}</td></tr>`;
     return `<tr class="${over ? 'overdue' : ''}">${withRes ? `<td><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))}</button></td><td class="n">${esc(r.apartment)}</td>` : ''}
     <td><span class="chip ${m.opens_state === 'hospital' ? 'red' : ['left', 'deceased'].includes(m.opens_state) ? '' : 'vio'}">${esc(MT[m.type].name)}</span></td><td>${esc(m.hospital || m.destination || '—')}${m.note ? `<br><small class="muted">${esc(m.note)}</small>` : ''}</td>
     <td class="n">${fDT(m.start)}</td><td class="n">${m.expected_return ? fDT(m.expected_return) + (over ? ' <b style="color:var(--danger)">באיחור</b>' : '') : '—'}</td>
@@ -1354,7 +1389,7 @@ function panelMove(p) {
   return `<div class="p-h"><div><h2>תנועה חדשה</h2><div class="meta">יציאה, אשפוז, חופשה, עזיבה או פטירה</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
   <div class="p-b"><form class="form" data-submit="move" autocomplete="off">
     ${fld('דייר/ת', `<input name="resident" type="text" list="dl-res" value="${r ? esc(residentLabel(r)) : ''}" placeholder="הקלידו שם או דירה" ${r ? '' : 'autofocus'}>${residentDatalist()}`, 'resident', 1)}
-    ${fld('סוג תנועה', `<select name="type" ${r ? 'autofocus' : ''}>${opt('', 'בחרו…', '')}${MOVE_TYPES.map(t => opt(t.id, t.name, '')).join('')}</select>`, 'type', 1)}
+    ${fld('סוג תנועה', `<select name="type" ${r ? 'autofocus' : ''}>${opt('', 'בחרו…', '')}${MOVE_TYPES.filter(t => t.id !== 'admission' || !admissionOf(r)).map(t => opt(t.id, t.name, '')).join('')}</select>`, 'type', 1)}
     <div data-when="type:left|deceased" class="note-inline red">תנועה זו מסמנת את הדייר/ת כ"עזב" / "נפטר" ומוציאה אותו/ה מכל הסבבים הבאים. אין תנועת סגירה.</div>
     <div class="frow">${fld('התחלה – תאריך ושעה', dtIn('start', isoToWall(nowIso())), 'start', 1)}
     <div data-when="type:hospital|vacation|away">${fld('חזרה צפויה', dtIn('expected_return', ''), 'expected_return')}</div></div>
@@ -1373,13 +1408,22 @@ function saveMove(form) {
   if (d.type === 'hospital' && !d.hospital) e.hospital = 'באשפוז חובה לבחור בית חולים';
   if (d.start && Date.parse(wallToIso(d.start)) > Date.now() + 36e5 * 24 * 30) e.start = 'תאריך רחוק מדי בעתיד';
   if (d.expected_return && d.start && d.expected_return < d.start) e.expected_return = 'החזרה לא יכולה להיות לפני ההתחלה';
+  if (r && d.type && !e.type) {
+    const adm = admissionOf(r);
+    if (d.type === 'admission') {
+      if (adm) e.type = 'כבר רשומה כניסה לדיור. אפשר רק לעדכן את התאריך שלה בלשונית התנועות של הדייר/ת.';
+      else if (d.start) { const first = S.movements.filter(x => x.resident_id === r.id).map(x => x.start).sort()[0]; if (first && Date.parse(wallToIso(d.start)) > Date.parse(first)) e.start = `הכניסה לדיור חייבת להיות לפני התנועה הראשונה (${fDT(first)})`; if (r.birth_date && d.start.slice(0, 10) < r.birth_date) e.start = 'תאריך הכניסה לא יכול להיות לפני תאריך הלידה'; }
+    } else if (!adm) e.type = 'קודם יש לרשום כניסה לדיור';
+    else if (d.start && Date.parse(wallToIso(d.start)) < Date.parse(adm.start)) e.start = `התנועה לא יכולה להיות לפני הכניסה לדיור (${fD(adm.start)})`;
+  }
   if (!showErrors(form, e)) return;
-  const t = MT[d.type], gone = !t.closer, start = wallToIso(d.start);
+  const t = MT[d.type], gone = ['left', 'deceased'].includes(t.opens_state), isAdm = d.type === 'admission', start = wallToIso(d.start);
   const m = stamp({ id: uid('M'), resident_id: r.id, type: d.type, opens_state: t.opens_state, start, expected_return: wallToIso(d.expected_return), end: gone ? start : null, closed_type: null,
     hospital: d.hospital || '', destination: d.destination || '', note: d.note, by: me().id }, true);
+  if (isAdm) m.end = start;
   S.movements.push(m);
   if (['hospital', 'vacation'].includes(t.opens_state)) r.status = t.opens_state; if (gone) r.status = t.opens_state; stamp(r);
-  syncRounds(r.id); closePanel(); refresh(); toast(`נרשמה ${t.name} ל${fullName(r)}${gone ? '' : ' – הוצא/ה מהסבב הפתוח'}`);
+  syncRounds(r.id); closePanel(); refresh(); toast(`נרשמה ${t.name} ל${fullName(r)}${gone || isAdm ? '' : ' – הוצא/ה מהסבב הפתוח'}`);
 }
 function returnMove(id) {
   const m = byId(S.movements, id); if (!m || m.end) return; const r = res(m.resident_id), t = nowIso();
@@ -1417,7 +1461,7 @@ function shiftSummary(date, shift) {
   const [a, b] = shiftWindow(date, shift), inW = v => v && Date.parse(v) >= a && Date.parse(v) < b;
   const rounds = S.rounds.filter(rd => { const t = Date.parse(rd.created_at); return t >= a && t < b || (rd.date === date && ((shift === 'morning' && rd.shift === 'morning') || (shift === 'evening' && rd.shift === 'evening'))); });
   const uniq = [...new Map(rounds.map(r => [r.id, r])).values()];
-  const mvO = S.movements.filter(m => inW(m.start)), mvC = S.movements.filter(m => m.closed_type && inW(m.end));
+  const mvO = S.movements.filter(m => m.type !== 'admission' && inW(m.start)), mvC = S.movements.filter(m => m.closed_type && inW(m.end));
   const calls = S.service_calls.filter(c => inW(c.opened_at)), evs = S.events.filter(e => inW(e.reported_at || e.created_at) && e.status !== 'draft');
   const act = S.handover_notes.filter(n => n.needs_action && (n.status === 'open' || inW(n.at)));
   return `<section class="summary" aria-label="סיכום משמרת">
@@ -1806,7 +1850,7 @@ function viewSettings() {
   out += sec('units', 'בניינים, קומות ודירות', `<div class="tbl"><table><thead><tr><th>יחידה</th><th>בניין</th><th>קומה</th><th>דירות</th><th class="n">דיירים</th></tr></thead><tbody>
     ${S.units.map(u => `<tr><td><b>${esc(u.label)}</b></td><td>${u.building}</td><td>${u.floor}</td><td>${u.apartments.join(', ')} <form class="actions" data-submit="apt-add" data-id="${u.id}" style="display:inline-flex"><input type="text" name="apt" placeholder="דירה" style="width:80px" aria-label="דירה חדשה"><button class="btn sm">הוספה</button></form></td><td class="n">${S.residents.filter(r => r.unit_id === u.id && !isGone(r)).length}</td></tr>`).join('')}</tbody></table></div>
     <form class="actions" data-submit="unit-add" style="margin-top:10px"><select name="building" aria-label="בניין">${opt('א', 'בניין א', 'א')}${opt('ב', 'בניין ב', '')}${opt('ג', 'בניין ג', '')}</select><input type="number" name="floor" min="0" max="20" placeholder="קומה" style="width:90px" aria-label="קומה"><button class="btn pri">${ic('plus')} הוספת קומה</button><span class="err" data-for="floor"></span></form>`);
-  out += sec('moves', 'סוגי תנועות (לקריאה בלבד)', `<div class="tbl"><table><thead><tr><th>פותח</th><th>סוגר</th><th>מצב</th></tr></thead><tbody>${MOVE_TYPES.map(t => `<tr><td>${t.name}</td><td>${t.closer || '(אין)'}</td><td>${{ hospital: 'באשפוז', vacation: 'בחופשה', away: 'מחוץ לבית', left: 'עזב', deceased: 'נפטר' }[t.opens_state]}</td></tr>`).join('')}</tbody></table></div>`);
+  out += sec('moves', 'סוגי תנועות (לקריאה בלבד)', `<div class="tbl"><table><thead><tr><th>פותח</th><th>סוגר</th><th>מצב</th></tr></thead><tbody>${MOVE_TYPES.map(t => `<tr><td>${t.name}</td><td>${t.closer || '(אין)'}</td><td>${{ admission: 'ללא שינוי (רישום כניסה)', hospital: 'באשפוז', vacation: 'בחופשה', away: 'מחוץ לבית', left: 'עזב', deceased: 'נפטר' }[t.opens_state]}</td></tr>`).join('')}</tbody></table></div>`);
   out += sec('evtypes', 'סוגי אירועים ורשימת עדכונים', `<div class="tbl"><table><thead><tr><th>סוג</th><th>פעיל</th><th>את מי לעדכן ותוך כמה זמן</th></tr></thead><tbody>${S.event_types.map(t => `<tr><td><b>${esc(t.name)}</b></td><td><input type="checkbox" ${t.active ? 'checked' : ''} data-ch="evtype-active" data-id="${t.id}" aria-label="פעיל"></td><td>${t.notify.map(n => `${NOTIFY_TO[n.to]} (${n.within_min >= 60 ? n.within_min / 60 + ' ש׳' : n.within_min + ' ד׳'})`).join(' · ')}</td></tr>`).join('')}</tbody></table></div>`);
   const sh = S.settings.shifts;
   out += sec('shifts', 'זמני משמרות וסבבים', `<form class="frow" data-submit="shifts" style="align-items:end">${fld('משמרת בוקר מתחילה', `<input type="text" inputmode="numeric" data-time placeholder="00:00" maxlength="5" name="morning" value="${sh.morning}">`, 'morning')}${fld('משמרת ערב מתחילה', `<input type="text" inputmode="numeric" data-time placeholder="00:00" maxlength="5" name="evening" value="${sh.evening}">`, 'evening')}${fld('משמרת לילה מתחילה', `<input type="text" inputmode="numeric" data-time placeholder="00:00" maxlength="5" name="night" value="${sh.night}">`, 'night')}${fld('סבב ערב נפתח מ-', `<input type="text" inputmode="numeric" data-time placeholder="00:00" maxlength="5" name="round_evening_from" value="${S.settings.round_evening_from}">`, 'round_evening_from', 0, 'לפני השעה הזו נפתח סבב בוקר')}<div><button class="btn pri">שמירה</button></div></form>`);
@@ -1879,6 +1923,9 @@ const ACT = {
   // movements
   'new-move': el => openPanel({ type: 'move', rid: el.dataset.rid }),
   'move-return': el => returnMove(el.dataset.id),
+  'adm-edit': el => { UI.open.adm = el.dataset.id; renderMain(); setTimeout(() => $('#adm-date')?.focus(), 0); },
+  'adm-cancel': () => { UI.open.adm = null; renderMain(); },
+  'adm-save': el => saveAdmissionDate(el.dataset.id),
   // handover
   'new-note': el => openPanel({ type: 'note', rid: el.dataset.rid }),
   'note-read': el => { const n = byId(S.handover_notes, el.dataset.id); if (!isRead(n)) n.read_by.push({ user: me().id, at: nowIso() }); refresh(); },
@@ -2038,7 +2085,7 @@ document.addEventListener('keydown', ev => {
     if (ev.key === 'Enter' && items[UI.gsel]) { ev.preventDefault(); openResident(items[UI.gsel].dataset.id); return; }
     if (ev.key === 'Escape') { ev.target.value = ''; box.hidden = true; ev.target.blur(); return; }
   }
-  if (ev.key === 'Escape') { if (UI.confirm) { UI.confirm = null; renderMain(); renderPanel(); } else if (UI.open.visit || UI.open.ng || UI.open.undo) { UI.open.visit = UI.open.ng = UI.open.undo = null; renderMain(); } else if (UI.panel) closePanel(); return; }
+  if (ev.key === 'Escape') { if (UI.confirm) { UI.confirm = null; renderMain(); renderPanel(); } else if (UI.open.visit || UI.open.ng || UI.open.undo || UI.open.adm) { UI.open.visit = UI.open.ng = UI.open.undo = UI.open.adm = null; renderMain(); } else if (UI.panel) closePanel(); return; }
   if (ev.key === '/' && !typing && me()) { ev.preventDefault(); $('#gq')?.focus(); return; }
   if (ev.altKey && /^[1-9]$/.test(ev.key) && me()) { const items = NAV.filter(n => may(n.perm)), n = items[+ev.key - 1]; if (n) { ev.preventDefault(); go('#/' + n.id); } }
   if (ev.key === 'Enter' && ev.target.id === 'undo-reason') { ev.preventDefault(); $('[data-act="undo-loc"]')?.click(); }
