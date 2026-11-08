@@ -591,6 +591,7 @@ function seed() {
   addMove('R035', 'away', 60 * 30, { dest: 'קניות', endMin: 60 * 27 });
   addMove('R044', 'hospital', 60 * 24 * 6, { hospital: HOSPITALS[0], endMin: 60 * 24 * 2 });
   addMove('R058', 'left', 60 * 24 * 15, { endMin: 60 * 24 * 15, dest: 'עבר/ה לגור ליד המשפחה' });
+  addMove('R048', 'deceased', 60 * 24 * 20, { endMin: 60 * 24 * 20, by: 'U2', note: 'נפטר/ה בשלווה בבית (נתוני הדגמה)' });
   // admission (כניסה לדיור): every resident, 1–10 years ago, always before any other seeded movement
   for (const r of D.residents) {
     const start = at(addDays(today(), -(365 + Math.floor(R() * 9 * 365))), '10:00');
@@ -598,6 +599,7 @@ function seed() {
     D.movements.push({ id: 'M' + (++mv), resident_id: r.id, type: 'admission', opens_state: 'admission', start, expected_return: null, end: start, closed_type: null, hospital: '', destination: '', note: '', by: 'U8', closed_by: null, ...st('U8') });
   }
   for (const m of D.movements) { const r = byId(D.residents, m.resident_id); if (!m.end && ['hospital', 'vacation'].includes(m.opens_state)) r.status = m.opens_state; if (['left', 'deceased'].includes(m.opens_state)) r.status = m.opens_state; }
+  for (const m of D.movements) if (m.opens_state === 'deceased') { const r = byId(D.residents, m.resident_id); r.social_notes = r.social_notes.filter(n => n.at < m.start); } // nothing dated after a death
 
   D.service_categories = ['חשמל', 'אינסטלציה', 'תיקונים', 'צבע', 'מנעול', 'מיזוג אוויר', 'ריהוט', 'ניקיון', 'מעלית', 'אחר']
     .map((name, i) => ({ id: 'C' + (i + 1), name, order: i + 1, active: true, default_handler: 'U6', default_urgency: name === 'מעלית' ? 'urgent' : 'normal', target_hours: { normal: 48, urgent: 8, critical: 2 } }));
@@ -696,7 +698,7 @@ function seed() {
   const DOCS = ['ד״ר לדוגמה א׳', 'ד״ר לדוגמה ב׳', 'ד״ר בדיקה ג׳'];
   D.med_orders = []; let mo = 0;
   for (const r of D.residents) {
-    if (r.status === 'left') continue; const k = r.nursing_level.at(-1).level === 'סיעודי' ? 3 + Math.floor(R() * 4) : Math.floor(R() * 4);
+    if (['left', 'deceased'].includes(r.status)) continue; const k = r.nursing_level.at(-1).level === 'סיעודי' ? 3 + Math.floor(R() * 4) : Math.floor(R() * 4);
     const extra = k && chance(.3) ? 1 : 0;
     for (let j = 0; j < k + extra; j++) {
       const prn = chance(.12), [brand, generic] = DRUGS[li++ % DRUGS.length], strength = pick(['5 MG', '10 MG', '20 MG', '50 MG', '100 MG', '250 MG']);
