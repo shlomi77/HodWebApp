@@ -724,6 +724,8 @@ const openMove = rid => S.movements.find(m => m.resident_id === rid && !m.end &&
 function activePref(rid, dk = today()) { return S.preferences.find(p => p.resident_id === rid && p.type === 'no_check' && p.from <= dk && (!p.to || p.to >= dk)); }
 const isGone = r => ['left', 'deceased'].includes(r.status);
 const sortApt = (a, b) => unitOf(a).building.localeCompare(unitOf(b).building) || a.apartment.localeCompare(b.apartment, 'he', { numeric: true }) || a.last_name.localeCompare(b.last_name, 'he');
+const HE = new Intl.Collator('he', { sensitivity: 'base', numeric: true });
+const sortName = (a, b) => HE.compare(a.last_name, b.last_name) || HE.compare(a.first_name, b.first_name) || sortApt(a, b);
 const curBenefit = r => [...(r.benefits || [])].sort((a, b) => a.from.localeCompare(b.from)).at(-1) || null;
 const socialWorkers = () => S.users.filter(u => u.active && (u.role === 'social_worker' || u.social_worker));
 const nursingNow = r => r.nursing_level?.at(-1)?.level || '—';
@@ -1080,11 +1082,19 @@ function viewRound() {
 /* ================================================================
    Residents: list, drawer, file
    ================================================================ */
+/* residents list table with sortable name / apartment headers (shared by #/residents and the category lists) */
+function residentsTable(list, f, view, cols, rowAttrs) {
+  const cmp = f.sort === 'apt' ? sortApt : sortName; list = [...list].sort((a, b) => cmp(a, b) * f.dir);
+  const th = c => { if (!c.sort) return `<th>${c.label}</th>`; const on = f.sort === c.sort; return `<th aria-sort="${on ? (f.dir > 0 ? 'ascending' : 'descending') : 'none'}"><button class="linkbtn" data-act="res-sort" data-view="${view}" data-k="${c.sort}">${c.label}${on ? (f.dir > 0 ? ' ▲' : ' ▼') : ''}</button></th>`; };
+  return `<div class="tbl"><table><thead><tr>${cols.map(th).join('')}</tr></thead><tbody>
+  ${list.map(r => `<tr ${rowAttrs(r)}>${cols.map(c => c.td(r)).join('')}</tr>`).join('')}
+  </tbody></table>${list.length ? '' : empty('לא נמצאו דיירים', 'נסו לשנות את החיפוש או המסננים.')}</div>`;
+}
 function viewResidents() {
-  const f = F('residents', { q: '', status: 'current', b: '', fl: '', sw: '' });
+  const f = F('residents', { q: '', status: 'current', b: '', fl: '', sw: '', sort: 'name', dir: 1 });
   const list = S.residents.filter(r => (f.status === 'all' || (f.status === 'current' ? !isGone(r) : r.status === f.status))
     && (!f.b || unitOf(r).building === f.b) && (!f.fl || String(unitOf(r).floor) === f.fl) && (!f.sw || r.responsible_social_worker_id === f.sw)
-    && (!f.q || norm(r.apartment).startsWith(norm(f.q)) || norm(fullName(r)).includes(norm(f.q)) || norm(r.demo_id).includes(norm(f.q)))).sort(sortApt);
+    && (!f.q || norm(r.apartment).startsWith(norm(f.q)) || norm(fullName(r)).includes(norm(f.q)) || norm(r.demo_id).includes(norm(f.q))));
   return `<div class="ph"><h1>דיירים</h1><span class="sub">${list.length} דיירים</span><span class="sp"></span>${may('res.create') ? `<button class="btn pri" data-act="new-resident">${ic('plus')} דייר חדש</button>` : ''}</div>
   <div class="filters">
     <div class="q">${ic('search')}<input id="res-q" type="search" placeholder="חיפוש לפי שם, דירה או מזהה" value="${esc(f.q)}" data-in="f" data-view="residents" data-k="q" aria-label="חיפוש דיירים"></div>
@@ -1093,9 +1103,15 @@ function viewResidents() {
     <select data-ch="f" data-view="residents" data-k="fl" aria-label="קומה">${opt('', 'כל הקומות', f.fl)}${[...new Set(S.units.map(u => u.floor))].sort().map(x => opt(String(x), 'קומה ' + x, f.fl)).join('')}</select>
     <select data-ch="f" data-view="residents" data-k="sw" aria-label="עו״ס אחראי/ת">${opt('', 'כל העו״ס', f.sw)}${socialWorkers().map(u => opt(u.id, 'עו״ס: ' + u.name, f.sw)).join('')}</select>
   </div>
-  <div class="tbl"><table><thead><tr><th>דירה</th><th>שם</th><th>בניין/קומה</th><th>סטטוס</th><th>גר לבד</th><th>עו״ס אחראי/ת</th><th>רמה תפקודית</th></tr></thead><tbody>
-  ${list.map(r => `<tr class="click${UI.panel?.id === r.id ? ' sel' : ''}" data-act="drawer" data-id="${r.id}"><td class="n"><b>${esc(r.apartment)}</b></td><td><a href="#/resident/${r.id}" data-stop="1"><b>${esc(fullName(r))}</b></a> ${moveBadge(r)}</td><td>${unitOf(r).building} / ${unitOf(r).floor}</td><td>${statusChip(r)}</td><td>${r.living.lives_alone ? 'כן' : `לא <span class="muted">(${ARR[r.living.arrangement] || '—'})</span>`}</td><td>${esc(uname(r.responsible_social_worker_id))}</td><td>${esc(nursingNow(r))}</td></tr>`).join('')}
-  </tbody></table>${list.length ? '' : empty('לא נמצאו דיירים', 'נסו לשנות את החיפוש או המסננים.')}</div>`;
+  ${residentsTable(list, f, 'residents', [
+    { label: 'דירה', sort: 'apt', td: r => `<td class="n"><b>${esc(r.apartment)}</b></td>` },
+    { label: 'שם', sort: 'name', td: r => `<td><a href="#/resident/${r.id}" data-stop="1"><b>${esc(fullName(r))}</b></a> ${moveBadge(r)}</td>` },
+    { label: 'בניין/קומה', td: r => `<td>${unitOf(r).building} / ${unitOf(r).floor}</td>` },
+    { label: 'סטטוס', td: r => `<td>${statusChip(r)}</td>` },
+    { label: 'גר לבד', td: r => `<td>${r.living.lives_alone ? 'כן' : `לא <span class="muted">(${ARR[r.living.arrangement] || '—'})</span>`}</td>` },
+    { label: 'עו״ס אחראי/ת', td: r => `<td>${esc(uname(r.responsible_social_worker_id))}</td>` },
+    { label: 'רמה תפקודית', td: r => `<td>${esc(nursingNow(r))}</td>` }],
+    r => `class="click${UI.panel?.id === r.id ? ' sel' : ''}" data-act="drawer" data-id="${r.id}"`)}`;
 }
 
 /* drawer: quick look from any list */
@@ -1846,6 +1862,7 @@ const ACT = {
   },
   'new-event': el => openPanel({ type: 'event', rids: el.dataset.rid ? [el.dataset.rid] : [] }),
   // residents
+  'res-sort': el => { const f = UI.f[el.dataset.view], k = el.dataset.k; if (f.sort === k) f.dir = -f.dir; else { f.sort = k; f.dir = 1; } renderMain(); },
   'new-resident': () => {
     const n = 1 + Math.max(0, ...S.residents.map(r => +r.demo_id.split('-')[1])), u = S.units[0];
     const r = stamp({ id: 'R' + String(n).padStart(3, '0'), demo_id: 'DEMO-' + String(n).padStart(4, '0'), first_name: '', last_name: '', gender: 'F', birth_date: '', apartment: u.apartments[0], unit_id: u.id, phone: '', email: '', languages: ['עברית'], religion: '', status: 'active', medical_fund: FUNDS[0],
