@@ -895,6 +895,7 @@ function activePref(rid, dk = today()) { return S.preferences.find(p => p.reside
 const isGone = r => ['left', 'deceased'].includes(r.status);
 const admissionOf = r => r && S.movements.find(m => m.resident_id === r.id && m.type === 'admission');
 const admissionDate = r => { const m = admissionOf(r); return m ? dkey(m.start) : null; };
+const admissionDateErr = (d, birth) => !d ? 'שדה חובה' : d > addDays(today(), 30) ? 'לא יותר מ-30 יום קדימה' : (birth && d < birth) ? 'לא לפני תאריך הלידה' : '';
 function tenureTxt(dk) { // length of residence since dk, as "X שנים Y חודשים"
   if (!dk) return '—'; const t = today(); let mo = (+t.slice(0, 4) - +dk.slice(0, 4)) * 12 + (+t.slice(5, 7) - +dk.slice(5, 7)); if (t.slice(8) < dk.slice(8)) mo--; mo = Math.max(0, mo);
   const y = Math.floor(mo / 12), m = mo % 12, yt = y === 1 ? 'שנה' : `${y} שנים`, mt = m === 1 ? 'חודש' : `${m} חודשים`;
@@ -1417,7 +1418,7 @@ function savePersonal(r, form) {
   if ('apartment' in d && !d.apartment) e.apartment = 'שדה חובה';
   if (d.treatment_start && d.birth_date && d.treatment_start < d.birth_date) e.treatment_start = 'לא לפני תאריך הלידה';
   if (!r._new && !d.treatment_start) e.treatment_start = 'שדה חובה';
-  if (r._new) { if (!d.admission_date) e.admission_date = 'שדה חובה'; else if (d.admission_date > addDays(today(), 30)) e.admission_date = 'לא יותר מ-30 יום קדימה'; else if (d.birth_date && d.admission_date < d.birth_date) e.admission_date = 'לא לפני תאריך הלידה'; }
+  if (r._new) { const ae = admissionDateErr(d.admission_date, d.birth_date); if (ae) e.admission_date = ae; }
   if (!showErrors(form, e)) return false;
   const wasCaregiver = r.living.arrangement === 'with_caregiver';
   Object.assign(r, { first_name: d.first_name, last_name: d.last_name, gender: d.gender, birth_date: d.birth_date, phone: d.phone, email: d.email, religion: d.religion, medical_fund: d.medical_fund, funding_source: d.funding_source,
@@ -1594,8 +1595,7 @@ function saveAdmissionDate(id) {
   if (!m || m.type !== 'admission') return; if (!may('res.edit')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
   const v = ($('#adm-date')?.value || '').trim(), d = parseD(v);
   if (!d) return fail(v ? 'תאריך בפורמט dd/mm/yyyy' : 'שדה חובה');
-  if (r.birth_date && d < r.birth_date) return fail('תאריך הכניסה לא יכול להיות לפני תאריך הלידה');
-  if (futureDate(d)) return fail('תאריך הכניסה לא יכול להיות בעתיד');
+  const ae = admissionDateErr(d, r.birth_date); if (ae) return fail(ae);
   const first = S.movements.filter(x => x.resident_id === r.id && x.type !== 'admission').map(x => dkey(x.start)).sort()[0];
   if (first && d > first) return fail(`הכניסה לדיור חייבת להיות לפני התנועה הראשונה (${fD(first)})`);
   m.start = m.end = at(d, isoToWall(m.start).slice(11, 16) || '10:00'); stamp(m); UI.open.adm = null; refresh(); toast('תאריך הכניסה לדיור עודכן');
