@@ -254,7 +254,7 @@ details.more[open]{padding-bottom:12px}
 .ftabs a[aria-current="page"]{color:var(--accent);border-bottom-color:var(--accent)}
 .fbody{padding:16px}
 .dirty-bar{position:sticky;top:var(--top-h,87px);z-index:5;margin-bottom:10px}
-.contact-row{display:grid;grid-template-columns:1.3fr 1fr 1fr auto auto auto;gap:8px;align-items:center}
+.contact-row{display:grid;grid-template-columns:1.2fr 1fr 1fr 1.2fr auto auto auto auto;gap:8px;align-items:center}
 .swbox{display:flex;align-items:center;gap:14px;background:var(--accent-soft);border-radius:12px;padding:12px 16px;margin-bottom:14px}
 .swbox .lbl{font-size:13.5px;font-weight:800;color:var(--accent)}
 .swbox .nm{font-size:22px;font-weight:800}
@@ -275,6 +275,32 @@ details.more[open]{padding-bottom:12px}
 .cat-strip h1{margin:0;font-size:24px;font-weight:800;color:var(--c)}
 .cat-strip .sp{flex:1}
 .cat-strip a.back{font-weight:700;color:var(--c)}
+
+/* ---------- medical file (תיק רפואי) ---------- */
+.mhead{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:flex-start;padding:14px 16px;border-top:6px solid var(--cat-medical)}
+.mhead .av{width:72px;height:72px;font-size:25px;border-radius:16px}
+.mhead h2{margin:0;font-size:23px;font-weight:800}
+.mhead dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 18px;margin:6px 0 0;font-size:14.5px}
+.mhead dl div{display:flex;gap:6px;min-width:0}
+.mhead dt{color:var(--muted);font-weight:600;white-space:nowrap}
+.mhead dd{margin:0;font-weight:700;min-width:0}
+.mfile{display:grid;grid-template-columns:230px minmax(0,1fr);gap:12px;margin-top:12px;align-items:start}
+.mmenu{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px;display:flex;flex-direction:column;gap:1px;position:sticky;top:calc(var(--top-h,87px) + 8px)}
+.mmenu a{display:flex;align-items:center;gap:9px;min-height:38px;padding:0 10px;border-radius:8px;text-decoration:none;color:var(--fg);font-weight:600;font-size:15px;white-space:nowrap}
+.mmenu a .i{color:var(--muted)}
+.mmenu a:hover{background:var(--surface-2)}
+.mmenu a[aria-current="page"]{background:var(--cat-medical-soft);color:var(--cat-medical);box-shadow:inset -4px 0 0 var(--cat-medical)}
+.mmenu a[aria-current="page"] .i{color:var(--cat-medical)}
+.mcontent{padding:14px 16px;min-width:0}
+.msec-h{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:12px}
+.msec-h h2{margin:0;font-size:21px;font-weight:800}
+.msec-h .sp{flex:1}
+tr.stopped td{opacity:.55}
+@media (max-width:860px){
+  .mfile{grid-template-columns:minmax(0,1fr)}
+  .mmenu{position:static;flex-direction:row;overflow-x:auto}
+  .mmenu a{flex:none}
+}
 
 /* ---------- feeds ---------- */
 .feed{display:flex;flex-direction:column;gap:8px}
@@ -381,7 +407,7 @@ details.more[open]{padding-bottom:12px}
    Core: helpers, time (Asia/Jerusalem), constants, storage, seed,
    permissions, router and rendering.
    ================================================================ */
-const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 5;
+const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 6;
 const IDLE_MS = 15 * 60 * 1000;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -450,6 +476,7 @@ const CONTACT_CHANNEL = { phone: 'טלפון', in_person: 'פנים אל פני�
 const PROSPECT_STATUS = { new: 'חדש', in_contact: 'בקשר', visited: 'ביקר/ה', waitlist: 'רשימת המתנה', joined: 'הצטרף/ה', not_relevant: 'לא רלוונטי' };
 const PROSPECT_CHIP = { new: 'blue', in_contact: 'acc', visited: 'vio', waitlist: 'warn', joined: 'ok', not_relevant: '' };
 const PROSPECT_SOURCES = ['המלצה של חבר/ה או משפחה', 'אתר אינטרנט', 'פרסום', 'הגיע/ה ביוזמתו/ה', 'הפניה מגורם מקצועי', 'אחר'];
+const FUNDING = ['פרטי', 'משרד הבריאות', 'משרד הרווחה', 'ביטוח סיעודי'];
 const URG = { normal: 'רגילה', urgent: 'דחופה', critical: 'דחוף ביותר' };
 const URG_CHIP = { normal: '', urgent: 'warn', critical: 'red' };
 const COMMON_AREAS = ['לובי', 'חדר אוכל', 'מועדון', 'חדר כביסה', 'חניה', 'גינה', 'בריכה', 'משרדים'];
@@ -522,6 +549,7 @@ function seed() {
       else mkRes(u, apt, chance(.65) ? 'F' : 'M', SUR[(D.residents.length * 7 + i) % SUR.length], { lives_alone: true, arrangement: null });
     });
   }
+  D.residents.forEach((r, i) => { r.contacts.forEach((c, j) => { c.email = j === 0 && i % 5 === 0 ? `family${r.id.slice(1)}@example.com` : ''; c.guardian = j === 0 && (r.id === 'R010' || r.id === 'R033'); }); });
   D.preferences = [
     { id: 'PF1', resident_id: 'R009', type: 'no_check', from: addDays(today(), -10), to: null, reason: 'ביקש/ה לא לבדוק בסבבים (בתיאום עם המשפחה)', by: 'U7', at: ago(60 * 24 * 10) },
     { id: 'PF2', resident_id: 'R047', type: 'no_check', from: addDays(today(), -3), to: addDays(today(), 7), reason: 'משפחה מתארחת בדירה, מדווחים בעצמם', by: 'U2', at: ago(60 * 24 * 3) }];
@@ -547,6 +575,7 @@ function seed() {
   // admission (כניסה לדיור): every resident, 1–10 years ago, always before any other seeded movement
   for (const r of D.residents) {
     const start = at(addDays(today(), -(365 + Math.floor(R() * 9 * 365))), '10:00');
+    r.treatment_start = dkey(start); r.funding_source = r.living.arrangement === 'with_caregiver' && r.nursing_level[0].level === 'סיעודי' ? 'ביטוח סיעודי' : +r.id.slice(1) % 13 === 4 ? 'משרד הרווחה' : +r.id.slice(1) % 17 === 6 ? 'משרד הבריאות' : 'פרטי';
     D.movements.push({ id: 'M' + (++mv), resident_id: r.id, type: 'admission', opens_state: 'admission', start, expected_return: null, end: start, closed_type: null, hospital: '', destination: '', note: '', by: 'U8', closed_by: null, ...st('U8') });
   }
   for (const m of D.movements) { const r = byId(D.residents, m.resident_id); if (!m.end && ['hospital', 'vacation'].includes(m.opens_state)) r.status = m.opens_state; if (['left', 'deceased'].includes(m.opens_state)) r.status = m.opens_state; }
@@ -678,6 +707,7 @@ function seed() {
     return { id: 'P' + String(i + 1).padStart(3, '0'), first_name: first, last_name: last, phone: `050-00000${pad(70 + i)}`, email: i % 4 === 0 ? `prospect${i + 1}@example.com` : '', source: PROSPECT_SOURCES[i % PROSPECT_SOURCES.length], first_contact: fc, status: st, notes: i % 3 === 0 ? 'מעדיפים קומה נמוכה.' : '', followups: fus, resident_id: null, created_by: by, created_at: at(fc, '11:00'), updated_by: fus.at(-1).by, updated_at: fus.at(-1).at };
   });
   { const r60 = D.residents[59], pj = D.prospects[10]; Object.assign(pj, { first_name: r60.first_name, last_name: r60.last_name, resident_id: r60.id }); } // one joined prospect already converted
+  D.clin = {}; // medical-file section records: S.clin.<coll> = [{ id, resident_id, at, by, ...stamp }]
   D.settings = { shifts: { morning: '07:00', evening: '15:00', night: '23:00' }, round_evening_from: '14:00', functional_levels: ['עצמאי', 'תשוש', 'סיעודי', 'תשוש נפש'], functional_levels_off: [] };
   D.rounds = [];
   return D;
@@ -741,6 +771,7 @@ const PERMS = {
   'res.create': ['admin'],
   'clinical.view': ['shift_manager', 'nurse', 'manager', 'admin'],
   'clinical.vitals': ['shift_manager', 'nurse', 'admin'],
+  'clinical.edit': ['shift_manager', 'nurse'],                         // write in medical-file sections; manager + admin read-only
   'meds.view': ['shift_manager', 'nurse', 'manager'],
   'meds.run': ['shift_manager', 'nurse'],
   'social.view': ['shift_manager', 'nurse', 'social_worker', 'manager', 'admin'],
@@ -850,6 +881,9 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', phone: '<path d="M5 3.5h3.5l1.5 4.5-2.3 1.5a11 11 0 0 0 6.8 6.8l1.5-2.3 4.5 1.5V19a2 2 0 0 1-2 2A16.5 16.5 0 0 1 3 5.5a2 2 0 0 1 2-2z"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>', plus: '<path d="M12 5v14M5 12h14"/>', print: '<path d="M7 9V3.5h10V9M7 17H4.5V10h15v7H17"/><rect x="7" y="14" width="10" height="6.5"/>',
   home: '<path d="M4 11 12 4l8 7v9H4z"/><path d="M10 20v-5h4v5"/>', chevL: '<path d="m14 6-6 6 6 6"/>', chevR: '<path d="m10 6 6 6-6 6"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>',
+  syringe: '<path d="m18 3 3 3M16.5 4.5l3 3M19 6l-9.5 9.5-3-3L16 3M8 14l-3 3M4 20l2-2"/>', flask: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/><path d="M7.5 15h9"/>',
+  clip: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"/>', shield: '<path d="M12 3 4.5 6v6c0 4.5 3.2 7.8 7.5 9 4.3-1.2 7.5-4.5 7.5-9V6z"/><path d="M12 8v5M12 16v.3"/>',
+  activity: '<path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>', bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>', send: '<path d="M4 12 20 4l-4 16-4-7z"/><path d="m12 13 8-9"/>',
   heart: '<path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/><path d="M12 10v5M9.5 12.5h5"/>',
   megaphone: '<path d="M4 10v4h3l7 4V6L7 10z"/><path d="M17.5 9a4 4 0 0 1 0 6M7 14l1.5 5"/>',
   logo: '<path d="M4 20V9.5L12 4l8 5.5V20"/><path d="M9 20v-6h6v6"/><path d="M12 8.2v2.6M10.7 9.5h2.6"/>', download: '<path d="M12 4v11M7 10.5l5 5 5-5M4.5 20h15"/>', upload: '<path d="M12 16V5M7 9.5l5-5 5 5M4.5 20h15"/>'};
@@ -1205,7 +1239,7 @@ function panelResident(p) {
     <div class="actions"><a class="btn pri" href="#/resident/${r.id}">פתח תיק דייר</a>${r.phone ? `<a class="btn" href="tel:${esc(r.phone.replace(/-/g, ''))}">${ic('phone')} ${esc(r.phone)}</a>` : ''}</div>
     <div class="actions">${may('mov.create') && !m && !isGone(r) ? `<button class="btn sm" data-act="new-move" data-rid="${r.id}">פתח תנועה</button>` : ''}${may('calls.create') ? `<button class="btn sm" data-act="new-call" data-rid="${r.id}">פתח קריאת שירות</button>` : ''}<button class="btn sm" data-act="new-event" data-rid="${r.id}">דווח אירוע חריג</button></div>
     ${m ? `<div class="p-sec"><h3>תנועה פתוחה</h3><div class="card pad"><b>${esc(MT[m.type].name)}</b>${m.hospital ? ' – ' + esc(m.hospital) : m.destination ? ' – ' + esc(m.destination) : ''}<br><span class="muted">מאז ${fDT(m.start)}${m.expected_return ? ` · חזרה צפויה ${fDT(m.expected_return)}` : ''}</span>${may('mov.create') ? `<div style="margin-top:8px"><button class="btn sm ok" data-act="move-return" data-id="${m.id}">חזר/ה (${esc(MT[m.type].closer)})</button></div>` : ''}</div></div>` : ''}
-    <div class="p-sec"><h3>אנשי קשר <a href="#/resident/${r.id}/contacts">לכל אנשי הקשר</a></h3>${r.contacts.length ? r.contacts.map(c => `<div class="actions" style="justify-content:space-between;border-top:1px dashed var(--line);padding:4px 0"><span><b>${esc(c.name)}</b> <span class="muted">${esc(c.relation)}${c.is_proxy ? ' · מיופה כוח' : ''}${c.notify_first ? ' · ראשון לעדכון' : ''}</span></span><a class="num" href="tel:${esc(c.phone.replace(/-/g, ''))}">${esc(c.phone)}</a></div>`).join('') : '<span class="muted">אין אנשי קשר</span>'}</div>
+    <div class="p-sec"><h3>אנשי קשר <a href="#/resident/${r.id}/contacts">לכל אנשי הקשר</a></h3>${r.contacts.length ? r.contacts.map(c => `<div class="actions" style="justify-content:space-between;border-top:1px dashed var(--line);padding:4px 0"><span><b>${esc(c.name)}</b> <span class="muted">${esc(c.relation)}${c.guardian ? ' · אפוטרופוס' : ''}${c.is_proxy ? ' · מיופה כוח' : ''}${c.notify_first ? ' · איש קשר ראשי' : ''}</span></span><a class="num" href="tel:${esc(c.phone.replace(/-/g, ''))}">${esc(c.phone)}</a></div>`).join('') : '<span class="muted">אין אנשי קשר</span>'}</div>
     <div class="p-sec"><h3>הערות אחרונות <a href="#/resident/${r.id}/notes">לכל ההערות</a></h3>${notes.length ? notes.map(n => `<div class="card pad" style="margin-bottom:6px"><small class="muted">${fDT(n.at)} · ${esc(uname(n.by))} · ${esc(n.subject)}</small><div>${esc(n.text)}</div></div>`).join('') : '<span class="muted">אין הערות</span>'}</div>
     <div class="p-sec"><h3>קישורים לתיק</h3><div class="actions">${fileTabs(r).map(t => `<a class="btn sm ghost" href="#/resident/${r.id}/${t.id}">${t.name}</a>`).join('')}</div></div>
   </div>`;
@@ -1217,7 +1251,7 @@ function fileTabs(r) {
     { id: 'events', name: 'אירועים' }, { id: 'nursing', name: 'סיעוד ותרופות', perm: 'clinical.view' }].filter(t => !t.perm || may(t.perm));
 }
 // a resident file opened inside a category shows only that category's sections
-const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['nursing'] };
+const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'contacts', 'movements', 'events'] }; // medical grows with each R7 commit, in menu order
 const fileCtx = () => UI.route === 'cat' ? { cat: UI.params[0], rid: UI.params[1], tab: UI.params[2] } : { cat: null, rid: UI.params[0], tab: UI.params[1] };
 const fileDefaultTab = ctx => ctx.cat ? CAT_SECTIONS[ctx.cat][0] : 'personal';
 const fileHref = (ctx, rid, tab) => ctx.cat ? `#/cat/${ctx.cat}/${rid}/${tab}` : `#/resident/${rid}/${tab}`;
@@ -1253,7 +1287,8 @@ function tabPersonal(r, ed) {
       <dt>שם פרטי</dt><dd>${esc(r.first_name)}</dd><dt>שם משפחה</dt><dd>${esc(r.last_name)}</dd><dt>מזהה הדגמה</dt><dd class="num">${esc(r.demo_id)}</dd>
       <dt>מגדר</dt><dd>${r.gender === 'F' ? 'נקבה' : 'זכר'}</dd><dt>תאריך לידה</dt><dd class="num">${fD(r.birth_date)} (גיל ${ageOf(r.birth_date)})</dd>
       <dt>נייד</dt><dd class="num">${r.phone ? `<a href="tel:${esc(r.phone.replace(/-/g, ''))}">${esc(r.phone)}</a>` : '—'}</dd><dt>דוא״ל</dt><dd>${esc(r.email) || '—'}</dd>
-      <dt>שפות</dt><dd>${esc(r.languages.join(', ')) || '—'}</dd><dt>דת</dt><dd>${esc(r.religion) || '—'}</dd><dt>קופת חולים</dt><dd>${esc(r.medical_fund)}</dd></dl>
+      <dt>שפות</dt><dd>${esc(r.languages.join(', ')) || '—'}</dd><dt>דת</dt><dd>${esc(r.religion) || '—'}</dd><dt>קופת חולים</dt><dd>${esc(r.medical_fund)}</dd>
+      <dt>כניסה לדיור</dt><dd class="num">${admissionDate(r) ? `${fD(admissionDate(r))} (ותק ${tenureTxt(admissionDate(r))})` : '—'}</dd><dt>תחילת טיפול</dt><dd class="num">${fD(r.treatment_start || admissionDate(r)) || '—'}</dd><dt>גורם מתקצב</dt><dd>${esc(r.funding_source) || '—'}</dd></dl>
     <dl class="kv"><dt>גר לבד</dt><dd>${r.living.lives_alone ? 'כן <span class="chip ok">בסבב בוקר וערב</span>' : `לא – ${esc(ARR[r.living.arrangement] || '—')} <span class="chip">בסבב בוקר בלבד</span>`}</dd>
       <dt>דירה</dt><dd>${esc(r.apartment)} · ${esc(unitOf(r).label)}</dd><dt>סטטוס</dt><dd>${statusChip(r)} <span class="hint">(משתנה דרך תנועות)</span></dd>
       <dt>מצב תפקודי</dt><dd>${esc(nursingNow(r))}</dd><dt>היסטוריית מצב תפקודי</dt><dd>${r.nursing_level.map(n => `${esc(n.level)} מ-${fD(n.from)}`).join(' ← ')}</dd>
@@ -1270,6 +1305,8 @@ function tabPersonal(r, ed) {
       ${fld('שפות', `<input name="languages" type="text" value="${esc(r.languages.join(', '))}">`, 'languages', 0, 'מופרדות בפסיק')}</div>
     <div class="frow">${fld('דת (רשות)', `<input name="religion" type="text" value="${esc(r.religion)}">`, 'religion')}
       ${fld('קופת חולים', `<select name="medical_fund">${FUNDS.map(x => opt(x, x, r.medical_fund)).join('')}</select>`, 'medical_fund')}
+      ${fld('גורם מתקצב', `<select name="funding_source">${FUNDING.map(x => opt(x, x, r.funding_source || 'פרטי')).join('')}</select>`, 'funding_source')}
+      ${fld('תאריך תחילת טיפול', `<input name="treatment_start" type="text" inputmode="numeric" data-date placeholder="dd/mm/yyyy" maxlength="10" value="${fD(r.treatment_start || '')}">`, 'treatment_start', 0, r._new ? 'ריק = תאריך הכניסה לדיור' : '')}
       ${fld('מצב תפקודי', `<select name="nursing">${functionalLevels(nursingNow(r)).map(x => opt(x, x, nursingNow(r))).join('')}</select>`, 'nursing', 0, 'שינוי נשמר בהיסטוריה')}
       ${may('settings.all') ? fld('יחידה', `<select name="unit_id">${S.units.map(u => opt(u.id, u.label, r.unit_id)).join('')}</select>`, 'unit_id') + fld('דירה', `<input name="apartment" type="text" value="${esc(r.apartment)}">`, 'apartment', 1) : ''}</div>
     <fieldset><legend>מגורים (קובע את השיבוץ לסבבים)</legend>
@@ -1290,10 +1327,13 @@ function savePersonal(r, form) {
   if (d.lives_alone === 'no' && !d.arrangement) e.arrangement = 'בחרו סוג מגורים';
   if (d.no_check && !d.pref_reason) e.pref_reason = 'כתבו סיבה';
   if ('apartment' in d && !d.apartment) e.apartment = 'שדה חובה';
+  if (d.treatment_start && d.birth_date && d.treatment_start < d.birth_date) e.treatment_start = 'לא לפני תאריך הלידה';
+  if (!r._new && !d.treatment_start) e.treatment_start = 'שדה חובה';
   if (r._new) { if (!d.admission_date) e.admission_date = 'שדה חובה'; else if (d.admission_date > addDays(today(), 30)) e.admission_date = 'לא יותר מ-30 יום קדימה'; else if (d.birth_date && d.admission_date < d.birth_date) e.admission_date = 'לא לפני תאריך הלידה'; }
   if (!showErrors(form, e)) return false;
   const wasCaregiver = r.living.arrangement === 'with_caregiver';
-  Object.assign(r, { first_name: d.first_name, last_name: d.last_name, gender: d.gender, birth_date: d.birth_date, phone: d.phone, email: d.email, religion: d.religion, medical_fund: d.medical_fund,
+  Object.assign(r, { first_name: d.first_name, last_name: d.last_name, gender: d.gender, birth_date: d.birth_date, phone: d.phone, email: d.email, religion: d.religion, medical_fund: d.medical_fund, funding_source: d.funding_source,
+    treatment_start: d.treatment_start || (r._new ? d.admission_date : r.treatment_start),
     languages: d.languages ? d.languages.split(',').map(s => s.trim()).filter(Boolean) : [] });
   if (d.unit_id) { r.unit_id = d.unit_id; r.apartment = d.apartment; }
   r.living = d.lives_alone === 'yes' ? { lives_alone: true, arrangement: null } : { lives_alone: false, arrangement: d.arrangement };
@@ -1311,11 +1351,12 @@ function savePersonal(r, form) {
   return true;
 }
 function tabContacts(r, ed) {
-  if (!ed) return r.contacts.length ? `<div class="tbl"><table><thead><tr><th>שם</th><th>קרבה</th><th>טלפון</th><th>אפוטרופוס / מיופה כוח</th><th>ראשון לעדכון</th></tr></thead><tbody>${r.contacts.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.relation)}</td><td class="n"><a href="tel:${esc(c.phone.replace(/-/g, ''))}">${esc(c.phone)}</a></td><td>${c.is_proxy ? '✓' : ''}</td><td>${c.notify_first ? '<span class="chip acc">ראשון לעדכון</span>' : ''}</td></tr>`).join('')}</tbody></table></div>${audit(r)}` : empty('אין אנשי קשר', may('res.edit') ? 'לחצו "עריכה" כדי להוסיף.' : '');
+  if (!ed) return r.contacts.length ? `<div class="tbl"><table><thead><tr><th>שם</th><th>קרבה</th><th>טלפון</th><th>דוא״ל</th><th>אפוטרופוס</th><th>ייפוי כוח</th><th>איש קשר ראשי</th></tr></thead><tbody>${r.contacts.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.relation)}</td><td class="n"><a href="tel:${esc(c.phone.replace(/-/g, ''))}">${esc(c.phone)}</a></td><td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td><td>${c.guardian ? '✓' : ''}</td><td>${c.is_proxy ? '✓' : ''}</td><td>${c.notify_first ? '<span class="chip acc">איש קשר ראשי</span>' : ''}</td></tr>`).join('')}</tbody></table></div>${audit(r)}` : empty('אין אנשי קשר', may('res.edit') ? 'לחצו "עריכה" כדי להוסיף.' : '');
   const row = (c = {}, i) => `<div class="contact-row" data-crow>
     <label class="fld"><span>שם</span><input type="text" data-c="name" value="${esc(c.name || '')}"></label><label class="fld"><span>קרבה</span><input type="text" data-c="relation" value="${esc(c.relation || '')}"></label>
     <label class="fld req"><span>טלפון</span><input type="tel" data-c="phone" value="${esc(c.phone || '')}"><span class="err"></span></label>
-    <label class="cb"><input type="checkbox" data-c="is_proxy" ${c.is_proxy ? 'checked' : ''}> מיופה כוח</label><label class="cb"><input type="checkbox" data-c="notify_first" ${c.notify_first ? 'checked' : ''}> ראשון לעדכון</label>
+    <label class="fld"><span>דוא״ל</span><input type="text" inputmode="email" data-c="email" value="${esc(c.email || '')}"><span class="err" data-e="email"></span></label>
+    <label class="cb"><input type="checkbox" data-c="guardian" ${c.guardian ? 'checked' : ''}> אפוטרופוס</label><label class="cb"><input type="checkbox" data-c="is_proxy" ${c.is_proxy ? 'checked' : ''}> ייפוי כוח</label><label class="cb"><input type="checkbox" data-c="notify_first" ${c.notify_first ? 'checked' : ''}> איש קשר ראשי</label>
     <button type="button" class="btn sm" data-act="contact-del" aria-label="הסרת איש קשר">הסר</button></div>`;
   return `<form class="form" id="file-form" data-submit="file-save" data-dirty="1"><div class="form" id="contact-rows">${r.contacts.map(row).join('')}</div>
     <template id="contact-tpl">${row()}</template>
@@ -1324,9 +1365,10 @@ function tabContacts(r, ed) {
 function saveContacts(r, form) {
   const rows = $$('[data-crow]', form); const out = []; let ok = true;
   for (const row of rows) {
-    const get = k => row.querySelector(`[data-c="${k}"]`); const c = { name: get('name').value.trim(), relation: get('relation').value.trim(), phone: get('phone').value.trim(), is_proxy: get('is_proxy').checked, notify_first: get('notify_first').checked };
-    if (!c.name && !c.phone) continue; const err = row.querySelector('.err'); get('phone').classList.remove('inv'); err.textContent = '';
+    const get = k => row.querySelector(`[data-c="${k}"]`); const c = { name: get('name').value.trim(), relation: get('relation').value.trim(), phone: get('phone').value.trim(), email: get('email').value.trim(), guardian: get('guardian').checked, is_proxy: get('is_proxy').checked, notify_first: get('notify_first').checked };
+    if (!c.name && !c.phone) continue; const err = row.querySelector('.err'), eerr = row.querySelector('[data-e="email"]'); get('phone').classList.remove('inv'); get('email').classList.remove('inv'); err.textContent = ''; eerr.textContent = '';
     if (!c.phone || !validPhone(c.phone)) { ok = false; err.textContent = c.phone ? '9–10 ספרות שמתחילות ב-0' : 'שדה חובה'; get('phone').classList.add('inv'); }
+    if (c.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) { ok = false; eerr.textContent = 'כתובת דוא״ל לא תקינה'; get('email').classList.add('inv'); }
     out.push(c);
   }
   if (!ok) { form.querySelector('.inv')?.focus(); return false; }
@@ -1990,7 +2032,7 @@ function viewHome() {
 function catStrip(c, extra = '') { return `<div class="cat-strip cat-${c.id}"><h1>${c.name}</h1>${extra}</div>`; }
 function viewCat() {
   const c = catOf(UI.params[0]); if (!c) return '';
-  if (CAT_SECTIONS[c.id] && UI.params[1]) return catStrip(c, `<span class="sp"></span><a class="back" href="#/cat/${c.id}">← לרשימת הדיירים</a>`) + viewResidentFile();
+  if (CAT_SECTIONS[c.id] && UI.params[1]) return catStrip(c, `<span class="sp"></span><a class="back" href="#/cat/${c.id}">← לרשימת הדיירים</a>`) + (c.id === 'medical' ? viewMedicalFile() : viewResidentFile());
   const quick = c.id === 'admin' ? [['round', 'סבב', 'rounds.run'], ['calls', 'קריאות שירות', 'calls.view'], ['movements', 'תנועות', 'mov.view']].filter(q => may(q[2])).map(([id, name]) => `<a class="btn sm" href="#/${id}">${name}</a>`).join('') : '';
   if (c.id === 'marketing') return catStrip(c) + viewProspects(true);
   return catStrip(c, `<span class="sp"></span>${quick}`) + (CAT_SECTIONS[c.id] ? catResidents(c) : '');
@@ -2014,6 +2056,108 @@ function catResidents(c) {
     { label: 'מצב תפקודי', td: r => `<td>${esc(nursingNow(r))}</td>` },
     { label: 'טלפון', td: r => `<td class="n">${r.phone ? esc(r.phone) : '<span class="muted">—</span>'}</td>` }],
     r => `class="click" data-act="cat-open" data-id="${r.id}"`)}`;
+}
+
+/* ================================================================
+   Medical file (תיק רפואי): header band, right side menu, section engine
+   ================================================================ */
+const NO_PERM_ACT = 'אין הרשאה לפעולה הזו בתפקיד הנוכחי';
+const clinOf = (coll, rid) => (S.clin[coll] || []).filter(x => x.resident_id === rid);
+/* section engine.
+   MED_SECTIONS[id] = { name, icon, coll, fields:[{k,label,type:'text'|'textarea'|'date'|'datetime'|'select'|'bool'|'number'|'multi'|'datalist',opts,req,when,hint}],
+                        cols:[{label, td(x)}], write:'clinical.edit', defaults(r), validate(d, x, r)->errs, filters:[{k,label,opts}|{k:'q'}], match(x,f), rowCls(x),
+                        render(r, editing) for sections with special UI, actions(r, editing), after(x, isNew, d) }  */
+const MED_SECTIONS = {
+  personal: { name: 'פרטים אישיים', icon: 'user', render: (r, ed) => tabPersonal(r, ed), actions: (r, ed) => fileEditActions('personal', ed) },
+  contacts: { name: 'אנשי קשר', icon: 'phone', render: (r, ed) => tabContacts(r, ed), actions: (r, ed) => fileEditActions('contacts', ed) },
+  movements: { name: 'תנועות מטופל', icon: 'move', render: r => tabResMovements(r), actions: r => may('mov.create') && !openMove(r.id) && !isGone(r) ? `<button class="btn pri" data-act="new-move" data-rid="${r.id}">${ic('plus')} פתח תנועה</button>` : '' },
+  events: { name: 'אירוע חריג', icon: 'alert', render: r => eventTable(visibleEvents().filter(e => e.resident_ids.includes(r.id)).sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))) + (!may('events.viewAll') ? '<p class="hint">מוצגים רק אירועים שדיווחת בעצמך.</p>' : ''),
+    actions: r => `<button class="btn pri" data-act="new-event" data-rid="${r.id}">${ic('plus')} דווח אירוע חריג</button>` },
+};
+function fileEditActions(tab, editing) {
+  if (!TAB_EDIT[tab] || !may(TAB_EDIT[tab])) return '';
+  return editing ? `<button class="btn ok" data-act="file-save">שמירה</button><button class="btn" data-act="file-cancel">ביטול</button>` : `<button class="btn pri" data-act="file-edit" data-tab="${tab}">עריכה</button>`;
+}
+function medHeader(r) {
+  const u = unitOf(r), adm = admissionDate(r), kv = (k, v) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
+  return `<div class="card mhead">${avatar(r)}
+    <div style="min-width:0;flex:1"><h2>${esc(fullName(r))} ${statusChip(r)} ${moveBadge(r)}</h2>
+      <dl>${kv('ת״ז (הדגמה)', `<span class="num">${esc(r.demo_id)}</span>`)}${kv('מס׳ דייר', `<span class="num">${esc(r.id)}</span>`)}${kv('בניין', u.building)}${kv('קומה', u.floor)}${kv('דירה', esc(r.apartment))}
+        ${kv('כניסה לדיור', adm ? `<span class="num">${fD(adm)}</span>` : '—')}${kv('ותק בדיור', tenureTxt(adm))}${kv('תחילת טיפול', `<span class="num">${fD(r.treatment_start || adm) || '—'}</span>`)}
+        ${kv('קופ״ח', esc(r.medical_fund))}${kv('גיל', ageOf(r.birth_date))}${kv('גורם מתקצב', esc(r.funding_source || '—'))}${kv('טלפון', r.phone ? `<a class="num" href="tel:${esc(r.phone.replace(/-/g, ''))}">${esc(r.phone)}</a>` : '—')}</dl>
+      <div class="badges" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${medAllergyBadge(r)}</div></div></div>`;
+}
+function medAllergyBadge(r) { return r.allergies?.length ? `<span class="chip red">⚠ רגישות: ${esc(r.allergies.join(', '))}</span>` : ''; }
+function viewMedicalFile() {
+  const ctx = fileCtx(), r = res(ctx.rid); if (!r) return empty('הדייר לא נמצא', 'ייתכן שהקישור ישן או שהנתונים אופסו.');
+  const secs = CAT_SECTIONS.medical.filter(id => MED_SECTIONS[id]), sec = secs.includes(ctx.tab) ? ctx.tab : secs[0], def = MED_SECTIONS[sec];
+  const editing = UI.edit && UI.edit.rid === r.id && UI.edit.tab === sec;
+  const body = def.render ? def.render(r, editing) : medList(r, sec);
+  const actions = def.actions ? def.actions(r, editing) : may(def.write) ? `<button class="btn pri" data-act="medrec-new" data-sec="${sec}" data-rid="${r.id}">${ic('plus')} הוספה</button>` : '<span class="chip">לקריאה בלבד</span>';
+  return `${UI.dirtyWarn ? `<div class="dirty-bar note-inline red" role="alert">יש שינויים שלא נשמרו. <button class="btn sm ok" data-act="file-save-dirty">שמירה</button> <button class="btn sm" data-act="file-discard">ביטול השינויים</button></div>` : ''}
+  ${medHeader(r)}
+  <div class="mfile">
+    <nav class="mmenu" aria-label="סעיפי התיק הרפואי">${secs.map(id => `<a href="#/cat/medical/${r.id}/${id}" ${id === sec ? 'aria-current="page"' : ''}>${ic(MED_SECTIONS[id].icon)}<span>${MED_SECTIONS[id].name}</span></a>`).join('')}</nav>
+    <section class="card mcontent" aria-label="${esc(def.name)}"><div class="msec-h"><h2>${esc(def.name)}</h2><span class="sp"></span><div class="actions no-print">${actions}</div></div>${body}</section>
+  </div>`;
+}
+/* generic list for engine sections: filters, newest first, author + time, edit per row */
+function medList(r, sec) {
+  const def = MED_SECTIONS[sec], fdef = {}; for (const x of def.filters || []) fdef[x.k] = x.def ?? '';
+  const f = F('med_' + sec, fdef);
+  const list = clinOf(def.coll, r.id).filter(x => !def.match || def.match(x, f)).sort((a, b) => String(b[def.sort || 'at']).localeCompare(String(a[def.sort || 'at'])));
+  const canW = may(def.write);
+  const filters = (def.filters || []).map(x => x.k === 'q' ? `<div class="q">${ic('search')}<input id="medf-${sec}" type="search" placeholder="${esc(x.label)}" value="${esc(f.q)}" data-in="f" data-view="med_${sec}" data-k="q" aria-label="${esc(x.label)}"></div>`
+    : `<select data-ch="f" data-view="med_${sec}" data-k="${x.k}" aria-label="${esc(x.label)}">${opt('', x.label, f[x.k])}${Object.entries(x.opts).map(([k, v]) => opt(k, v, f[x.k])).join('')}</select>`).join('');
+  return `${filters ? `<div class="filters">${filters}</div>` : ''}
+  ${list.length ? `<div class="tbl"><table><thead><tr>${def.cols.map(c => `<th>${c.label}</th>`).join('')}<th>נרשם ע״י</th>${canW ? '<th></th>' : ''}</tr></thead><tbody>
+  ${list.map(x => `<tr class="${def.rowCls ? def.rowCls(x) : ''}">${def.cols.map(c => `<td>${c.td(x)}</td>`).join('')}<td><small>${esc(uname(x.by))}<br><span class="muted num">${fDT(x.created_at)}</span>${x.updated_at && x.updated_at !== x.created_at ? `<br><span class="muted">עודכן ${esc(uname(x.updated_by))} ${fDT(x.updated_at)}</span>` : ''}</small></td>
+    ${canW ? `<td><button class="btn sm" data-act="medrec-edit" data-sec="${sec}" data-id="${x.id}">עריכה</button></td>` : ''}</tr>`).join('')}</tbody></table></div>` : empty('אין רשומות להצגה', canW ? 'לחצו "הוספה" כדי להוסיף.' : '')}`;
+}
+function medField(fd, v) {
+  const name = fd.k, o = typeof fd.opts === 'function' ? fd.opts() : fd.opts;
+  let inner;
+  if (fd.type === 'textarea') inner = `<textarea name="${name}">${esc(v ?? '')}</textarea>`;
+  else if (fd.type === 'date') inner = dIn(name, v || '');
+  else if (fd.type === 'datetime') inner = dtIn(name, v ? isoToWall(v) : '');
+  else if (fd.type === 'number') inner = `<input name="${name}" type="text" inputmode="decimal" value="${esc(v ?? '')}">`;
+  else if (fd.type === 'bool') return `<div${fd.when ? ` data-when="${fd.when}"` : ''}><label class="cb"><input type="checkbox" name="${name}" ${v ? 'checked' : ''}> ${esc(fd.label)}</label><span class="err" data-for="${name}"></span></div>`;
+  else if (fd.type === 'select') inner = `<select name="${name}">${opt('', 'בחרו…', v)}${Array.isArray(o) ? o.map(x => opt(x, x, v)).join('') : Object.entries(o).map(([k, l]) => opt(k, l, v)).join('')}</select>`;
+  else if (fd.type === 'multi') inner = `<div class="actions">${(Array.isArray(o) ? o.map(x => [x, x]) : Object.entries(o)).map(([k, l]) => `<label class="cb"><input type="checkbox" name="${name}[]" value="${esc(k)}" ${(v || []).includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join('')}</div>`;
+  else if (fd.type === 'datalist') inner = `<input name="${name}" type="text" list="dl-${name}" value="${esc(v ?? '')}"><datalist id="dl-${name}">${(o || []).map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+  else if (fd.type === 'custom') return fd.html(v);
+  else inner = `<input name="${name}" type="text" value="${esc(v ?? '')}">`;
+  return `<div${fd.when ? ` data-when="${fd.when}"` : ''}>${fld(fd.label, inner, name, fd.req, fd.hint || '')}</div>`;
+}
+function panelMedrec(p) {
+  const def = MED_SECTIONS[p.sec]; if (!def || !may('clinical.view')) return null;
+  const x = p.id && (S.clin[def.coll] || []).find(y => y.id === p.id), r = res(x ? x.resident_id : p.rid); if (!r || !may(def.write)) return null;
+  const v = x || (def.defaults ? def.defaults(r) : {});
+  return `<div class="p-h"><div><h2>${esc(def.name)} – ${x ? 'עריכה' : 'רשומה חדשה'}</h2><div class="meta">${esc(fullName(r))} · דירה ${esc(r.apartment)}${x ? ` · נרשם ע״י ${esc(uname(x.by))} ${fDT(x.created_at)}` : ''}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
+  <div class="p-b"><form class="form" data-submit="medrec" data-sec="${p.sec}" data-id="${x ? x.id : ''}" data-rid="${r.id}" autocomplete="off">
+    ${def.fields.map(fd => medField(fd, v[fd.k])).join('')}
+    <div class="actions"><button class="btn pri">שמירה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
+}
+function saveMedrec(form) {
+  const def = MED_SECTIONS[form.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT);
+  const coll = S.clin[def.coll], x = form.dataset.id && coll.find(y => y.id === form.dataset.id), r = res(form.dataset.rid);
+  const d = readForm(form), e = {};
+  for (const fd of def.fields) {
+    if (fd.type === 'custom') { if (fd.read) d[fd.k] = fd.read(form); continue; }
+    const hidden = fd.when && form.querySelector(`[name="${fd.k}"],[name="${fd.k}__d"],[name="${fd.k}[]"]`)?.closest('[hidden]'); if (hidden) { d[fd.k] = fd.type === 'bool' ? false : fd.type === 'multi' ? [] : ''; continue; }
+    if (fd.type === 'multi') d[fd.k] = d[fd.k] || [];
+    if (fd.req && (d[fd.k] === '' || d[fd.k] == null || (fd.type === 'multi' && !d[fd.k].length))) e[fd.k] = 'שדה חובה';
+    else if (fd.type === 'number' && d[fd.k] !== '' && isNaN(+d[fd.k])) e[fd.k] = 'מספר בלבד';
+  }
+  Object.assign(e, def.validate ? def.validate(d, x, r, e) : {});
+  if (!showErrors(form, e)) return;
+  const data = {}; for (const fd of def.fields) { let val = d[fd.k]; if (fd.type === 'datetime') val = val ? wallToIso(val) : ''; if (fd.type === 'number') val = val === '' ? '' : +val; if (fd.type === 'bool') val = !!val; data[fd.k] = val; }
+  let rec;
+  if (x) { Object.assign(x, data); stamp(x); rec = x; toast('הרשומה עודכנה'); }
+  else { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: r.id, ...data, by: me().id }, true); coll.push(rec); toast('הרשומה נשמרה'); }
+  closePanel();
+  if (def.after) def.after(rec, !x, d);
+  refresh();
 }
 
 /* ================================================================
@@ -2096,7 +2240,7 @@ function saveProspectFu(form) {
 }
 
 const VIEWS = { prospects: () => viewProspects(false), home: viewHome, cat: viewCat, round: viewRound, residents: viewResidents, resident: viewResidentFile, movements: viewMovements, handover: viewHandover, calls: viewCalls, events: viewEvents, meds: viewMeds, reports: viewReports, settings: viewSettings };
-const PANELS = { prospect: panelProspect, contactlog: panelContactLog, res: panelResident, move: panelMove, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
+const PANELS = { medrec: panelMedrec, prospect: panelProspect, contactlog: panelContactLog, res: panelResident, move: panelMove, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
 
 /* ================================================================
    Event wiring: clicks, inputs, changes, submits, keyboard, routing
@@ -2146,7 +2290,7 @@ const ACT = {
     if (!may('res.create')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
     const n = 1 + Math.max(0, ...S.residents.map(r => +r.demo_id.split('-')[1])), u = S.units[0];
     const r = stamp({ id: 'R' + String(n).padStart(3, '0'), demo_id: 'DEMO-' + String(n).padStart(4, '0'), first_name: '', last_name: '', gender: 'F', birth_date: '', apartment: u.apartments[0], unit_id: u.id, phone: '', email: '', languages: ['עברית'], religion: '', status: 'active', medical_fund: FUNDS[0],
-      living: { lives_alone: true, arrangement: null }, nursing_level: [{ level: functionalLevels()[0] || 'עצמאי', from: today(), by: me().id }], responsible_social_worker_id: socialWorkers()[0]?.id || null, contacts: [], benefits: [], allergies: [], social_notes: [], _new: true }, true);
+      treatment_start: '', funding_source: 'פרטי', living: { lives_alone: true, arrangement: null }, nursing_level: [{ level: functionalLevels()[0] || 'עצמאי', from: today(), by: me().id }], responsible_social_worker_id: socialWorkers()[0]?.id || null, contacts: [], benefits: [], allergies: [], social_notes: [], _new: true }, true);
     if (prefill.first_name) Object.assign(r, { first_name: prefill.first_name, last_name: prefill.last_name, phone: prefill.phone || '', email: prefill.email || '', gender: prefill.gender || r.gender, _prospect: prefill.prospect_id || undefined });
     S.residents.push(r); UI.edit = { rid: r.id, tab: 'personal' }; go(`#/resident/${r.id}/personal`);
   },
@@ -2177,6 +2321,8 @@ const ACT = {
   'ho-shift': el => { UI.f.handover.shift = el.dataset.v; renderMain(); },
   // calls
   'new-call': el => openPanel({ type: 'call', rid: el.dataset.rid }),
+  'medrec-new': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, rid: el.dataset.rid }); },
+  'medrec-edit': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, id: el.dataset.id }); },
   'new-prospect': () => { if (!may('prospects.create')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); openPanel({ type: 'prospect' }); },
   'open-prospect': el => openPanel({ type: 'prospect', id: el.dataset.id }),
   'pr-status': el => { UI.f.prospects.status = UI.f.prospects.status === el.dataset.v ? '' : el.dataset.v; renderMain(); },
@@ -2290,6 +2436,7 @@ const SUB = {
   note: form => saveNote(form),
   contactlog: form => saveContactLog(form),
   prospect: form => saveProspect(form),
+  medrec: form => saveMedrec(form),
   'prospect-fu': form => saveProspectFu(form),
   call: form => saveCall(form),
   event: (form, ev) => saveEvent(form, ev.submitter),
