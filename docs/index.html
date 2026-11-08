@@ -381,7 +381,7 @@ details.more[open]{padding-bottom:12px}
    Core: helpers, time (Asia/Jerusalem), constants, storage, seed,
    permissions, router and rendering.
    ================================================================ */
-const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 3;
+const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 4;
 const IDLE_MS = 15 * 60 * 1000;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -446,6 +446,7 @@ const CALL_STATUS = { open: 'נפתחה', assigned: 'שובצה', in_progress: '
 const CALL_CHIP = { open: 'warn', assigned: 'blue', in_progress: 'blue', done: 'ok', closed: '', cancelled: '' };
 const CALL_NEXT = { open: 'assigned', assigned: 'in_progress', in_progress: 'done', done: 'closed' };
 const CALL_NEXT_LBL = { open: 'שבץ לטיפול', assigned: 'התחל טיפול', in_progress: 'סמן כבוצע', done: 'סגור קריאה' };
+const CONTACT_CHANNEL = { phone: 'טלפון', in_person: 'פנים אל פנים', message: 'הודעה' };
 const URG = { normal: 'רגילה', urgent: 'דחופה', critical: 'דחוף ביותר' };
 const URG_CHIP = { normal: '', urgent: 'warn', critical: 'red' };
 const COMMON_AREAS = ['לובי', 'חדר אוכל', 'מועדון', 'חדר כביסה', 'חניה', 'גינה', 'בריכה', 'משרדים'];
@@ -655,6 +656,14 @@ function seed() {
     D.vitals.push({ id: uid('V'), resident_id: r.id, type: 'bp', value: `${115 + Math.floor(R() * 35)}/${68 + Math.floor(R() * 20)}`, at: t, by: 'U3' });
     D.vitals.push({ id: uid('V'), resident_id: r.id, type: 'pulse', value: String(60 + Math.floor(R() * 35)), at: t, by: 'U3' });
   }
+  // contact log (יומן קשר) – synthetic entries with the residents' fictitious contacts
+  D.contact_log = [];
+  const CL_TXT = ['שיחה עם הבת בנושא ביקור בסוף השבוע.', 'הבן ביקש עדכון על מצב הבריאות, הועבר לאחות.', 'הדייר/ת ביקש/ה לתאם הסעה לקופת חולים.', 'עדכון המשפחה על שינוי בשעות הארוחות.', 'שיחה על השתתפות בחוג בוקר.', 'המשפחה ביקשה להזכיר על תור לרופא שיניים.', 'נמסרה הודעה על קריאת שירות שטופלה בדירה.', 'שיחת היכרות עם איש קשר חדש.', 'הדייר/ת שיתף/ה שמרגיש/ה בודד/ה, הועבר לעו״ס.', 'תיאום פגישה עם המנהלת לשבוע הבא.'];
+  for (let i = 0; i < 20; i++) {
+    const r = D.residents[i < 3 ? 6 : Math.floor(R() * 50)], kind = i % 3 === 0 ? 'resident' : 'contact', c = r.contacts[Math.floor(R() * r.contacts.length)];
+    const by = ['U1', 'U4', 'U5', 'U7'][i % 4], when = ago(60 * (6 + Math.floor(R() * 24 * 30)));
+    D.contact_log.push({ id: 'CL' + (i + 1), resident_id: r.id, at: when, who_type: kind, who: kind === 'contact' ? c.name : '', channel: ['phone', 'phone', 'in_person', 'message'][Math.floor(R() * 4)], summary: CL_TXT[Math.floor(R() * CL_TXT.length)], by, history: [], created_by: by, created_at: when, updated_by: by, updated_at: when });
+  }
   D.settings = { shifts: { morning: '07:00', evening: '15:00', night: '23:00' }, round_evening_from: '14:00', functional_levels: ['עצמאי', 'תשוש', 'סיעודי', 'תשוש נפש'], functional_levels_off: [] };
   D.rounds = [];
   return D;
@@ -726,6 +735,8 @@ const PERMS = {
   'mov.create': ['reception', 'shift_manager', 'nurse', 'manager', 'admin'],
   'notes.view': ALL,
   'notes.write': ['reception', 'shift_manager', 'nurse', 'social_worker', 'manager', 'admin'],
+  'contactlog.view': ['reception', 'shift_manager', 'nurse', 'social_worker', 'manager', 'admin'],   // = res.view
+  'contactlog.write': ['reception', 'shift_manager', 'nurse', 'social_worker', 'manager', 'admin'],  // = notes.write
   'calls.view': ALL,
   'calls.create': ['reception', 'shift_manager', 'nurse', 'social_worker', 'manager', 'admin'],
   'calls.handle': ['maintenance', 'shift_manager', 'manager', 'admin'],
@@ -1184,7 +1195,7 @@ function panelResident(p) {
 }
 
 function fileTabs(r) {
-  return [{ id: 'personal', name: 'פרטים אישיים' }, { id: 'contacts', name: 'אנשי קשר' }, { id: 'movements', name: 'תנועות', perm: 'mov.view' },
+  return [{ id: 'personal', name: 'פרטים אישיים' }, { id: 'contacts', name: 'אנשי קשר' }, { id: 'contactlog', name: 'יומן קשר', perm: 'contactlog.view' }, { id: 'movements', name: 'תנועות', perm: 'mov.view' },
     { id: 'social', name: 'תיק סוציאלי', perm: 'social.view' }, { id: 'benefits', name: 'קצבאות', perm: 'social.view' }, { id: 'notes', name: 'הערות / קשר מחלקתי' },
     { id: 'events', name: 'אירועים' }, { id: 'nursing', name: 'סיעוד ותרופות', perm: 'clinical.view' }].filter(t => !t.perm || may(t.perm));
 }
@@ -1198,7 +1209,7 @@ function viewResidentFile() {
   const ctx = fileCtx(), r = res(ctx.rid); if (!r) return empty('הדייר לא נמצא', 'ייתכן שהקישור ישן או שהנתונים אופסו.');
   const tabs = fileTabs(r).filter(t => !ctx.cat || CAT_SECTIONS[ctx.cat].includes(t.id)), tab = tabs.find(t => t.id === ctx.tab)?.id || tabs[0]?.id || 'personal';
   const editing = UI.edit && UI.edit.rid === r.id && UI.edit.tab === tab, u = unitOf(r), m = openMove(r.id);
-  const body = { personal: tabPersonal, contacts: tabContacts, movements: tabResMovements, social: tabSocial, benefits: tabBenefits, notes: tabResNotes, events: tabResEvents, nursing: tabNursing }[tab](r, editing);
+  const body = { personal: tabPersonal, contacts: tabContacts, contactlog: tabContactLog, movements: tabResMovements, social: tabSocial, benefits: tabBenefits, notes: tabResNotes, events: tabResEvents, nursing: tabNursing }[tab](r, editing);
   return `${UI.dirtyWarn ? `<div class="dirty-bar note-inline red" role="alert">יש שינויים שלא נשמרו. <button class="btn sm ok" data-act="file-save-dirty">שמירה</button> <button class="btn sm" data-act="file-discard">ביטול השינויים</button></div>` : ''}
   <div class="card">
     <div class="fhead">${avatar(r)}
@@ -1356,6 +1367,50 @@ function saveBenefits(r, form) {
 function tabResMovements(r) {
   const list = S.movements.filter(m => m.resident_id === r.id).sort((a, b) => b.start.localeCompare(a.start));
   return `${movementTable(list, false, r)}`;
+}
+/* contact log (יומן קשר): add-only, edit by the author or admin, edits keep history */
+const clMayEdit = x => !!me() && may('contactlog.write') && (x.by === me().id || me().role === 'admin');
+const clWho = x => x.who_type === 'resident' ? 'הדייר/ת עצמו/ה' : x.who || '—';
+function tabContactLog(r) {
+  const f = F('contactlog', { ch: '', q: '' });
+  const list = S.contact_log.filter(x => x.resident_id === r.id && (!f.ch || x.channel === f.ch) && (!f.q || norm(x.summary + clWho(x)).includes(norm(f.q)))).sort((a, b) => b.at.localeCompare(a.at));
+  return `<div class="filters">${may('contactlog.write') ? `<button class="btn pri" data-act="new-contactlog" data-rid="${r.id}">${ic('plus')} רישום קשר</button>` : ''}
+    <div class="q">${ic('search')}<input id="cl-q" type="search" placeholder="חיפוש בתוכן" value="${esc(f.q)}" data-in="f" data-view="contactlog" data-k="q" aria-label="חיפוש ביומן"></div>
+    <select data-ch="f" data-view="contactlog" data-k="ch" aria-label="ערוץ">${opts(CONTACT_CHANNEL, f.ch, 'כל הערוצים')}</select></div>
+  <div class="feed">${list.map(x => `<article class="ncard"><div class="top-l"><b class="num" style="color:var(--fg)">${fDT(x.at)}</b><span class="chip blue">${CONTACT_CHANNEL[x.channel]}</span><span>עם: <b>${esc(clWho(x))}</b></span><span>נרשם ע״י ${esc(uname(x.by))}</span>
+      ${x.history.length ? `<span class="chip" title="${esc(x.history.map(hh => `${fDT(hh.edited_at)} ${uname(hh.edited_by)}: ${hh.summary}`).join('\n'))}">נערך ע״י ${esc(uname(x.updated_by))} · ${fDT(x.updated_at)}</span>` : ''}
+      <span class="sp" style="flex:1"></span>${clMayEdit(x) ? `<button class="btn sm" data-act="edit-contactlog" data-id="${x.id}">עריכה</button>` : ''}</div>
+    <div class="txt">${esc(x.summary)}</div>
+    ${x.history.length ? `<details><summary class="hint">גרסאות קודמות (${x.history.length})</summary><ul class="hist">${x.history.map(hh => `<li><small>${fDT(hh.at)} · ${esc(CONTACT_CHANNEL[hh.channel])} · ${esc(hh.who_type === 'resident' ? 'הדייר/ת עצמו/ה' : hh.who)} – נשמר עד ${fDT(hh.edited_at)} (${esc(uname(hh.edited_by))})</small><div>${esc(hh.summary)}</div></li>`).join('')}</ul></details>` : ''}</article>`).join('') || empty('אין רישומים ביומן הקשר', may('contactlog.write') ? 'לחצו "רישום קשר" כדי להוסיף.' : '')}</div>`;
+}
+function panelContactLog(p) {
+  const x = p.id && byId(S.contact_log, p.id), r = res(x ? x.resident_id : p.rid); if (!r) return null;
+  if (x ? !clMayEdit(x) : !may('contactlog.write')) return null;
+  const whoSel = x ? (x.who_type === 'contact' ? 'c:' + r.contacts.findIndex(c => c.name === x.who) : x.who_type) : (r.contacts.length ? 'c:0' : 'resident');
+  const sel = whoSel === 'c:-1' ? 'other' : whoSel, otherVal = x && (x.who_type === 'other' || whoSel === 'c:-1') ? x.who : '';
+  return `<div class="p-h"><div><h2>${x ? 'עריכת רישום קשר' : 'רישום קשר חדש'}</h2><div class="meta">${esc(fullName(r))} · דירה ${esc(r.apartment)}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
+  <div class="p-b"><form class="form" data-submit="contactlog" data-id="${x ? x.id : ''}" data-rid="${r.id}" autocomplete="off">
+    ${fld('תאריך ושעה', dtIn('at', isoToWall(x ? x.at : nowIso())), 'at', 1)}
+    ${fld('עם מי', `<select name="who">${r.contacts.map((c, i) => opt('c:' + i, `${c.name} (${c.relation})`, sel)).join('')}${opt('resident', 'הדייר/ת עצמו/ה', sel)}${opt('other', 'אחר (טקסט חופשי)', sel)}</select>`, 'who', 1)}
+    <div data-when="who:other">${fld('שם / תיאור', `<input name="who_other" type="text" value="${esc(otherVal)}">`, 'who_other', 1)}</div>
+    ${fld('ערוץ', `<select name="channel">${opts(CONTACT_CHANNEL, x ? x.channel : 'phone')}</select>`, 'channel', 1)}
+    ${fld('סיכום', `<textarea name="summary" autofocus>${esc(x ? x.summary : '')}</textarea>`, 'summary', 1)}
+    ${x ? '<p class="hint">הגרסה הקודמת נשמרת בהיסטוריה של הרישום.</p>' : ''}
+    <div class="actions"><button class="btn pri">שמירה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
+}
+function saveContactLog(form) {
+  const id = form.dataset.id, x = id && byId(S.contact_log, id), r = res(form.dataset.rid);
+  if (x ? !clMayEdit(x) : !may('contactlog.write')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
+  const d = readForm(form), e = {};
+  if (!d.at) e.at = 'שדה חובה'; else if (Date.parse(wallToIso(d.at)) > Date.now() + 60000) e.at = 'השעה לא יכולה להיות בעתיד';
+  if (d.who === 'other' && !d.who_other) e.who_other = 'כתבו עם מי היה הקשר';
+  if (!d.summary || d.summary.length < 2) e.summary = 'כתבו סיכום (לפחות 2 תווים)';
+  if (!showErrors(form, e)) return;
+  const who_type = d.who.startsWith('c:') ? 'contact' : d.who, who = who_type === 'contact' ? r.contacts[+d.who.slice(2)]?.name || '' : who_type === 'other' ? d.who_other : '';
+  const data = { at: wallToIso(d.at), who_type, who, channel: d.channel, summary: d.summary };
+  if (x) { x.history.push({ at: x.at, who_type: x.who_type, who: x.who, channel: x.channel, summary: x.summary, edited_at: nowIso(), edited_by: me().id }); Object.assign(x, data); stamp(x); toast('הרישום עודכן'); }
+  else { S.contact_log.push(stamp({ id: uid('CL'), resident_id: r.id, ...data, by: me().id, history: [] }, true)); toast('הרישום נשמר ביומן הקשר'); }
+  closePanel(); refresh();
 }
 function tabResNotes(r) {
   const list = S.handover_notes.filter(n => n.resident_id === r.id).sort((a, b) => b.at.localeCompare(a.at));
@@ -1944,7 +1999,7 @@ function catResidents(c) {
 }
 
 const VIEWS = { home: viewHome, cat: viewCat, round: viewRound, residents: viewResidents, resident: viewResidentFile, movements: viewMovements, handover: viewHandover, calls: viewCalls, events: viewEvents, meds: viewMeds, reports: viewReports, settings: viewSettings };
-const PANELS = { res: panelResident, move: panelMove, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
+const PANELS = { contactlog: panelContactLog, res: panelResident, move: panelMove, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
 
 /* ================================================================
    Event wiring: clicks, inputs, changes, submits, keyboard, routing
@@ -2011,6 +2066,8 @@ const ACT = {
   'adm-save': el => saveAdmissionDate(el.dataset.id),
   // handover
   'new-note': el => openPanel({ type: 'note', rid: el.dataset.rid }),
+  'new-contactlog': el => { if (!may('contactlog.write')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); openPanel({ type: 'contactlog', rid: el.dataset.rid }); },
+  'edit-contactlog': el => { const x = byId(S.contact_log, el.dataset.id); if (!x || !clMayEdit(x)) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); openPanel({ type: 'contactlog', id: x.id }); },
   'note-read': el => { const n = byId(S.handover_notes, el.dataset.id); if (!isRead(n)) n.read_by.push({ user: me().id, at: nowIso() }); refresh(); },
   'note-read-all': () => { for (const n of unreadNotes()) n.read_by.push({ user: me().id, at: nowIso() }); refresh(); toast('כל ההערות סומנו כנקראו'); },
   'note-done': el => { const n = byId(S.handover_notes, el.dataset.id); Object.assign(n, { status: 'done', done_by: me().id, done_at: nowIso() }); if (!isRead(n)) n.read_by.push({ user: me().id, at: nowIso() }); stamp(n); refresh(); toast('סומן כטופל'); },
@@ -2124,6 +2181,7 @@ const SUB = {
   'social-note': form => { const d = readForm(form); if (!showErrors(form, d.text.length < 2 ? { text: 'כתבו את תוכן ההערה' } : {})) return; const r = res(fileCtx().rid); r.social_notes.push({ id: uid('SN'), at: nowIso(), by: me().id, text: d.text }); stamp(r); refresh(); toast('ההערה נוספה'); },
   move: form => saveMove(form),
   note: form => saveNote(form),
+  contactlog: form => saveContactLog(form),
   call: form => saveCall(form),
   event: (form, ev) => saveEvent(form, ev.submitter),
   'ev-review': form => {
