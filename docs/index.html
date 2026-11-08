@@ -2489,7 +2489,7 @@ function panelProspect(p) {
   const canEdit = x ? may('prospects.edit') : may('prospects.create'), canFu = may('prospects.create');
   const head = `<div class="p-h"><div><h2>${x ? `${esc(x.first_name)} ${esc(x.last_name)}` : 'מתעניין/ת חדש/ה'}</h2><div class="meta">${x ? `${x.id} · <span class="chip ${PROSPECT_CHIP[x.status]}">${PROSPECT_STATUS[x.status]}</span>` : 'שדות החובה מסומנים בכוכבית'}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>`;
   const v = x || { first_name: '', last_name: '', phone: '', email: '', source: '', first_contact: today(), status: 'new', notes: '' };
-  const form = canEdit ? `<form class="form" data-submit="prospect" data-id="${x ? x.id : ''}" autocomplete="off">
+  const form = canEdit ? `<form class="form" data-submit="prospect" data-id="${x ? x.id : ''}" autocomplete="off" novalidate>
     <div class="frow">${fld('שם פרטי', `<input name="first_name" type="text" value="${esc(v.first_name)}" ${x ? '' : 'autofocus'}>`, 'first_name', 1)}${fld('שם משפחה', `<input name="last_name" type="text" value="${esc(v.last_name)}">`, 'last_name', 1)}</div>
     <div class="frow">${fld('טלפון', `<input name="phone" type="tel" value="${esc(v.phone)}" placeholder="050-0000000">`, 'phone', 0, '9–10 ספרות, מתחיל ב-0')}${fld('דוא״ל', `<input name="email" type="email" value="${esc(v.email)}">`, 'email')}</div>
     <div class="frow">${fld('מקור', `<select name="source">${opt('', 'בחרו…', v.source)}${PROSPECT_SOURCES.map(s2 => opt(s2, s2, v.source)).join('')}</select>`, 'source', 1)}${fld('תאריך פנייה ראשונה', dIn('first_contact', v.first_contact), 'first_contact', 1)}</div>
