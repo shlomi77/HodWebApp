@@ -407,7 +407,7 @@ tr.stopped td{opacity:.55}
    Core: helpers, time (Asia/Jerusalem), constants, storage, seed,
    permissions, router and rendering.
    ================================================================ */
-const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 8;
+const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 9;
 const IDLE_MS = 15 * 60 * 1000;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -480,6 +480,9 @@ const INTAKE_RESULT = { taken: 'נטל/ה', partial: 'נטל/ה חלקית', not
 const INTAKE_CHIP = { taken: 'ok', partial: 'warn', not_taken: 'red' };
 const MED_KIND = { chronic: 'כרוני', acute: 'אקוט' };
 const MED_ROUTES = ['פומי', 'תת-לשוני', 'מקומי', 'אינהלציה', 'זריקה', 'טיפות'];
+const NURSE_FLAGS = ['כאב', 'נפילה', 'שינוי התנהגות', 'סירוב לטיפול', 'פצע לחץ', 'אחר'];
+const DISCIPLINES = ['סיעוד', 'פיזיותרפיה', 'ריפוי בעיסוק', 'תזונה', 'עבודה סוציאלית', 'רפואה'];
+const FU_STATUS = ['פתוח', 'בטיפול', 'הושג', 'הופסק'];
 const FUNDING = ['פרטי', 'משרד הבריאות', 'משרד הרווחה', 'ביטוח סיעודי'];
 const URG = { normal: 'רגילה', urgent: 'דחופה', critical: 'דחוף ביותר' };
 const URG_CHIP = { normal: '', urgent: 'warn', critical: 'red' };
@@ -720,7 +723,21 @@ function seed() {
     return { id: 'P' + String(i + 1).padStart(3, '0'), first_name: first, last_name: last, phone: `050-00000${pad(70 + i)}`, email: i % 4 === 0 ? `prospect${i + 1}@example.com` : '', source: PROSPECT_SOURCES[i % PROSPECT_SOURCES.length], first_contact: fc, status: st, notes: i % 3 === 0 ? 'מעדיפים קומה נמוכה.' : '', followups: fus, resident_id: null, created_by: by, created_at: at(fc, '11:00'), updated_by: fus.at(-1).by, updated_at: fus.at(-1).at };
   });
   { const r60 = D.residents[59], pj = D.prospects[10]; Object.assign(pj, { first_name: r60.first_name, last_name: r60.last_name, resident_id: r60.id }); } // one joined prospect already converted
-  D.clin = { intake: [], allergies: [], diagnoses: [], labs: [] };
+  D.clin = { intake: [], allergies: [], diagnoses: [], labs: [], medreport: [], nursereport: [], followup: [], meetings: [] };
+  { // reports, treatment follow-up and team meetings for ~15 residents
+    const pushC = (coll, pre, o) => { const t = o.created_at || at(o.at, '12:00'); D.clin[coll].push({ id: pre + (D.clin[coll].length + 1), created_by: o.by, created_at: t, updated_by: o.by, updated_at: t, ...o }); };
+    const MR = [['לחץ דם מאוזן, ללא תלונות חדשות.', 'להמשיך טיפול קבוע, מעקב לחץ דם שבועי.'], ['תלונה על כאבי ברכיים, ללא סימני דלקת.', 'משכך כאבים לפי הצורך, הפניה לפיזיותרפיה.'], ['שיעול יבש כשבוע, ריאות נקיות בהאזנה.', 'מעקב, שתייה מרובה, לחזור אם יש חום.'], ['בדיקה תקופתית, מצב יציב.', 'בדיקות דם שגרתיות בעוד 3 חודשים.']];
+    const NR = ['ישן/ה היטב, אכל/ה ארוחת בוקר מלאה.', 'התלונן/ה על כאב בגב התחתון, ניתן משכך כאבים לפי הוראה.', 'סירב/ה למקלחת, בוצע ניסיון חוזר בערב.', 'אדמומיות קלה בעקב, הוחל מזרן מחליף לחץ.', 'מבולבל/ת מעט בערב, נרגע/ה אחרי שיחה.', 'מצב כללי טוב, ללא אירועים.'];
+    const GOALS = [['שיפור יציבות בהליכה', 'תרגילי שיווי משקל פעמיים בשבוע', 'פיזיותרפיה'], ['שמירה על משקל תקין', 'מעקב שקילה שבועי ותפריט מותאם', 'תזונה'], ['הפחתת בדידות', 'שילוב בחוג בוקר במועדון', 'עבודה סוציאלית'], ['מניעת פצעי לחץ', 'שינוי תנוחה כל שעתיים', 'סיעוד'], ['עצמאות בלבוש', 'אימון בעזרים', 'ריפוי בעיסוק'], ['איזון סוכר', 'מדידת סוכר יומית ודיווח לרופא/ה', 'רפואה']];
+    D.residents.filter((r, i) => i % 4 === 2).slice(0, 15).forEach((r, i) => {
+      for (let j = 0; j < 2; j++) { const dt = addDays(today(), -(4 + j * 40 + i * 2)), [fi, rec] = MR[(i + j) % MR.length]; pushC('medreport', 'MR', { resident_id: r.id, at: dt, doctor: DOCS[(i + j) % 3], findings: fi, recommendations: rec, by: j ? 'U2' : 'U3' }); }
+      for (let j = 0; j < 3; j++) { const d0 = new Date(Date.now() - (j * 26 + i * 5 + 3) * 3600e3), w = workShiftAt(d0, { shifts: { morning: '07:00', evening: '15:00', night: '23:00' } }), txt = NR[(i * 2 + j) % NR.length];
+        pushC('nursereport', 'NR', { resident_id: r.id, at: dkey(d0), shift: w.shift, text: txt, flags: txt.includes('כאב') ? ['כאב'] : txt.includes('סירב') ? ['סירוב לטיפול'] : txt.includes('אדמומיות') ? ['פצע לחץ'] : txt.includes('מבולבל') ? ['שינוי התנהגות'] : [], by: j % 2 ? 'U2' : 'U3', created_at: iso(d0) }); }
+      const [goal, action, disc] = GOALS[i % GOALS.length]; pushC('followup', 'FU', { resident_id: r.id, at: addDays(today(), -(10 + i * 3)), discipline: disc, goal, action, status: FU_STATUS[i % 4], by: i % 2 ? 'U2' : 'U3' });
+      if (i % 3 === 0) { const dt = addDays(today(), -(7 + i * 4)); pushC('meetings', 'TM', { resident_id: r.id, at: dt, participants: ['U3', 'U4', 'U7'].concat(i % 2 ? ['U2'] : []), participants_other: i % 2 ? 'בת המשפחה' : '', summary: 'ישיבת צוות רב-מקצועית: סקירת מצב תפקודי, תרופות וחברה.', decisions: 'להמשיך תוכנית טיפול, לעדכן את המשפחה.',
+        tasks: [{ text: 'עדכון המשפחה בסיכום הישיבה', owner: 'U4', due: addDays(dt, 3), done: true }, { text: 'בדיקת התאמת עזרי הליכה', owner: 'U3', due: addDays(today(), 5), done: false }], by: 'U3' }); }
+    });
+  }
   // allergies: migrate the seeded allergy names into structured records
   const ALG_TYPE = { 'פניצילין': 'תרופה', 'סולפה': 'תרופה', 'אספירין': 'תרופה', 'אגוזים': 'מזון', 'לטקס': 'אחר' }, ALG_REACT = ['פריחה', 'גרד', 'נפיחות', 'קוצר נשימה', 'בחילה'];
   D.residents.forEach((r, i) => { for (const a of r.allergies || []) { const t = ago(60 * 24 * (30 + i * 7)); D.clin.allergies.push({ id: 'AL' + (D.clin.allergies.length + 1), resident_id: r.id, at: dkey(t), allergen: a, type: ALG_TYPE[a] || 'אחר', reaction: ALG_REACT[i % ALG_REACT.length], severity: ['קלה', 'בינונית', 'חמורה'][i % 3], by: 'U3', created_by: 'U3', created_at: t, updated_by: 'U3', updated_at: t }); } delete r.allergies; });
@@ -1279,7 +1296,7 @@ function fileTabs(r) {
     { id: 'events', name: 'אירועים' }, { id: 'nursing', name: 'סיעוד ותרופות', perm: 'clinical.view' }].filter(t => !t.perm || may(t.perm));
 }
 // a resident file opened inside a category shows only that category's sections
-const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'contacts', 'movements', 'diagnoses', 'allergies', 'vitals', 'meds', 'labs', 'events'] }; // medical grows with each R7 commit, in menu order
+const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'followup', 'contacts', 'movements', 'medreport', 'nursereport', 'diagnoses', 'allergies', 'vitals', 'meds', 'labs', 'meetings', 'events'] }; // medical grows with each R7 commit, in menu order
 const fileCtx = () => UI.route === 'cat' ? { cat: UI.params[0], rid: UI.params[1], tab: UI.params[2] } : { cat: null, rid: UI.params[0], tab: UI.params[1] };
 const fileDefaultTab = ctx => ctx.cat ? CAT_SECTIONS[ctx.cat][0] : 'personal';
 const fileHref = (ctx, rid, tab) => ctx.cat ? `#/cat/${ctx.cat}/${rid}/${tab}` : `#/resident/${rid}/${tab}`;
@@ -2098,6 +2115,34 @@ const MED_SECTIONS = {
   personal: { name: 'פרטים אישיים', icon: 'user', render: (r, ed) => tabPersonal(r, ed), actions: (r, ed) => fileEditActions('personal', ed) },
   contacts: { name: 'אנשי קשר', icon: 'phone', render: (r, ed) => tabContacts(r, ed), actions: (r, ed) => fileEditActions('contacts', ed) },
   movements: { name: 'תנועות מטופל', icon: 'move', render: r => tabResMovements(r), actions: r => may('mov.create') && !openMove(r.id) && !isGone(r) ? `<button class="btn pri" data-act="new-move" data-rid="${r.id}">${ic('plus')} פתח תנועה</button>` : '' },
+  followup: { name: 'מעקב טיפול', icon: 'check', coll: 'followup', prefix: 'FU', write: 'clinical.edit',
+    fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'discipline', label: 'תחום', type: 'select', opts: DISCIPLINES, req: 1 }, { k: 'goal', label: 'מטרה', type: 'text', req: 1 },
+      { k: 'action', label: 'פעולה שבוצעה', type: 'textarea', req: 1 }, { k: 'status', label: 'סטטוס', type: 'select', opts: FU_STATUS, req: 1 }],
+    defaults: () => ({ at: today(), status: 'פתוח' }), validate: d => futureDate(d.at) ? { at: 'לא יכול להיות בעתיד' } : {},
+    filters: [{ k: 'status', label: 'כל הסטטוסים', opts: Object.fromEntries(FU_STATUS.map(x => [x, x])) }, { k: 'discipline', label: 'כל התחומים', opts: Object.fromEntries(DISCIPLINES.map(x => [x, x])) }],
+    match: (x, f) => (!f.status || x.status === f.status) && (!f.discipline || x.discipline === f.discipline),
+    cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'תחום', td: x => esc(x.discipline) }, { label: 'מטרה', td: x => `<b>${esc(x.goal)}</b>` }, { label: 'פעולה', td: x => esc(x.action) },
+      { label: 'סטטוס', td: x => `<span class="chip ${{ 'פתוח': 'warn', 'בטיפול': 'blue', 'הושג': 'ok', 'הופסק': '' }[x.status]}">${esc(x.status)}</span>` }] },
+  medreport: { name: 'דיווח רפואי', icon: 'note', coll: 'medreport', prefix: 'MR', write: 'clinical.edit',
+    fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'doctor', label: 'רופא/ה', type: 'datalist', opts: () => S.settings.doctors, req: 1 }, { k: 'findings', label: 'ממצאים', type: 'textarea', req: 1 }, { k: 'recommendations', label: 'המלצות', type: 'textarea' }],
+    defaults: () => ({ at: today() }), validate: d => futureDate(d.at) ? { at: 'לא יכול להיות בעתיד' } : {}, filters: [{ k: 'q', label: 'חיפוש בממצאים ובהמלצות' }], match: (x, f) => !f.q || norm(x.findings + x.recommendations + x.doctor).includes(norm(f.q)),
+    cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'רופא/ה', td: x => esc(x.doctor) }, { label: 'ממצאים', td: x => esc(x.findings) }, { label: 'המלצות', td: x => esc(x.recommendations || '—') }] },
+  nursereport: { name: 'דיווח סיעודי', icon: 'heart', coll: 'nursereport', prefix: 'NR', write: 'clinical.edit',
+    fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'shift', label: 'משמרת', type: 'select', opts: SHIFT, req: 1 }, { k: 'nurse', label: 'אח/ות מדווח/ת', type: 'custom', html: () => `<div class="fld"><span>אח/ות מדווח/ת</span><div><b>${esc(me().name)}</b> <span class="hint">(נרשם אוטומטית)</span></div></div>`, read: () => undefined },
+      { k: 'text', label: 'דיווח', type: 'textarea', req: 1 }, { k: 'flags', label: 'סימונים', type: 'multi', opts: NURSE_FLAGS }],
+    defaults: () => ({ at: workShiftAt().date, shift: workShiftAt().shift }), validate: d => futureDate(d.at) ? { at: 'לא יכול להיות בעתיד' } : {},
+    filters: [{ k: 'shift', label: 'כל המשמרות', opts: SHIFT }, { k: 'flag', label: 'כל הסימונים', opts: Object.fromEntries(NURSE_FLAGS.map(x => [x, x])) }], match: (x, f) => (!f.shift || x.shift === f.shift) && (!f.flag || (x.flags || []).includes(f.flag)),
+    cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'משמרת', td: x => SHIFT[x.shift] || '—' }, { label: 'אח/ות', td: x => esc(uname(x.by)) }, { label: 'דיווח', td: x => esc(x.text) },
+      { label: 'סימונים', td: x => (x.flags || []).map(fl => `<span class="chip warn">${esc(fl)}</span>`).join(' ') || '—' }] },
+  meetings: { name: 'ישיבות צוות', icon: 'users', coll: 'meetings', prefix: 'TM', write: 'clinical.edit',
+    fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'participants', label: 'משתתפים', type: 'multi', opts: () => Object.fromEntries(S.users.filter(u => u.active).map(u => [u.id, u.name])) },
+      { k: 'participants_other', label: 'משתתפים נוספים (טקסט חופשי)', type: 'text' }, { k: 'summary', label: 'סיכום', type: 'textarea', req: 1 }, { k: 'decisions', label: 'החלטות', type: 'textarea' },
+      { k: 'tasks', label: 'משימות להמשך', type: 'custom', html: v => meetingTasksField(v), read: form => $$('[data-trow]', form).map(row => { const g2 = k => row.querySelector(`[data-t="${k}"]`); return { text: g2('text').value.trim(), owner: g2('owner').value, due: parseD(g2('due').value) || '', due_raw: g2('due').value.trim(), done: g2('done').checked }; }).filter(t => t.text) }],
+    defaults: () => ({ at: today(), participants: [me().id], tasks: [] }),
+    validate: d => { const e = {}; if (futureDate(d.at)) e.at = 'לא יכול להיות בעתיד'; if (!d.participants.length && !d.participants_other) e.participants = 'בחרו לפחות משתתף/ת אחד/ת'; if (d.tasks.some(t => t.due_raw && !t.due)) e.tasks = 'תאריך יעד בפורמט dd/mm/yyyy'; d.tasks.forEach(t => delete t.due_raw); return e; },
+    cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'משתתפים', td: x => esc([...(x.participants || []).map(uname), x.participants_other].filter(Boolean).join(', ')) },
+      { label: 'סיכום והחלטות', td: x => `${esc(x.summary)}${x.decisions ? `<br><small class="muted">החלטות: ${esc(x.decisions)}</small>` : ''}` },
+      { label: 'משימות', td: x => (x.tasks || []).map((t, i) => `<label class="cb" style="min-height:30px;font-weight:500"><input type="checkbox" data-act="mtask-done" data-id="${x.id}" data-i="${i}" ${t.done ? 'checked' : ''} ${may('clinical.edit') ? '' : 'disabled'}> <span style="${t.done ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(t.text)}</span> <small class="muted">${esc(uname(t.owner))}${t.due ? ' · עד ' + fD(t.due) : ''}</small></label>`).join('<br>') || '—' }] },
   diagnoses: { name: 'אבחנות', icon: 'clip', coll: 'diagnoses', prefix: 'DX', write: 'clinical.edit',
     fields: [{ k: 'diagnosis', label: 'אבחנה', type: 'text', req: 1 }, { k: 'code', label: 'קוד (רשות)', type: 'text' }, { k: 'at', label: 'תאריך אבחון', type: 'date', req: 1 },
       { k: 'status', label: 'מצב', type: 'select', opts: { active: 'פעילה', past: 'עבר' }, req: 1 }, { k: 'doctor', label: 'רופא/ה מאבחן/ת', type: 'datalist', opts: () => S.settings.doctors }],
@@ -2203,6 +2248,13 @@ function panelIntake(p) {
     ${fld('הערה', `<textarea name="note"></textarea>`, 'note', 0, 'חובה כשהתוצאה אינה "נטל/ה"')}
     <div class="actions"><button class="btn pri">שמירת בדיקה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
 }
+function meetingTasksField(v) {
+  const users = S.users.filter(u => u.active), row = (t = {}) => `<div class="frow" data-trow style="align-items:end"><label class="fld"><span>משימה</span><input type="text" data-t="text" value="${esc(t.text || '')}"></label>
+    <label class="fld"><span>אחראי/ת</span><select data-t="owner">${users.map(u => opt(u.id, u.name, t.owner || me().id)).join('')}</select></label><label class="fld"><span>תאריך יעד</span><input type="text" inputmode="numeric" data-date placeholder="dd/mm/yyyy" maxlength="10" data-t="due" value="${fD(t.due || '')}"></label>
+    <label class="cb"><input type="checkbox" data-t="done" ${t.done ? 'checked' : ''}> בוצע</label></div>`;
+  return `<fieldset><legend>משימות להמשך</legend><div id="mtask-rows" class="form">${(v || []).map(row).join('')}</div><template id="mtask-tpl">${row()}</template>
+    <div class="actions"><button type="button" class="btn sm" data-act="mtask-add">${ic('plus')} הוספת משימה</button><span class="err" data-for="tasks"></span></div></fieldset>`;
+}
 const labOut = x => (x.low !== '' && x.low != null && +x.value < +x.low) || (x.high !== '' && x.high != null && +x.value > +x.high);
 function vitalsSection(r) {
   const f = F('med_vitals', { type: '' });
@@ -2243,7 +2295,7 @@ function medList(r, sec) {
   const def = MED_SECTIONS[sec], fdef = {}; for (const x of def.filters || []) fdef[x.k] = x.def ?? '';
   const f = F('med_' + sec, fdef);
   const sk = x => def.sort === 'severity_rank' ? 9 - (SEV_ORDER[x.severity] ?? 3) + '|' + x.at : String(x[def.sort || 'at']);
-  const list = clinOf(def.coll, r.id).filter(x => !x.removed && (!def.match || def.match(x, f))).sort((a, b) => sk(b).localeCompare(sk(a)));
+  const list = clinOf(def.coll, r.id).filter(x => !x.removed && (!def.match || def.match(x, f))).sort((a, b) => sk(b).localeCompare(sk(a)) || String(b.created_at).localeCompare(String(a.created_at)));
   const canW = may(def.write);
   const filters = (def.filters || []).map(x => x.k === 'q' ? `<div class="q">${ic('search')}<input id="medf-${sec}" type="search" placeholder="${esc(x.label)}" value="${esc(f.q)}" data-in="f" data-view="med_${sec}" data-k="q" aria-label="${esc(x.label)}"></div>`
     : `<select data-ch="f" data-view="med_${sec}" data-k="${x.k}" aria-label="${esc(x.label)}">${opt('', x.label, f[x.k])}${Object.entries(typeof x.opts === 'function' ? x.opts(r) : x.opts).map(([k, v]) => opt(k, v, f[x.k])).join('')}</select>`).join('');
@@ -2465,6 +2517,8 @@ const ACT = {
   'medorder-update': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); const sel = medF().sel; if (sel.length > 1) return toast('לעדכון בחרו הוראה אחת בלבד'); openPanel(sel.length ? { type: 'medorder', id: sel[0] } : { type: 'medhandling', rid: el.dataset.rid }); },
   'intake-open': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); const sel = medF().sel.filter(id => byId(S.med_orders, id)?.active); if (!sel.length) return toast('בחרו לפחות הוראה פעילה אחת לבדיקת נטילה'); openPanel({ type: 'intake', rid: el.dataset.rid, ids: sel }); },
   'medrec-new': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, rid: el.dataset.rid }); },
+  'mtask-add': () => { $('#mtask-rows').insertAdjacentHTML('beforeend', $('#mtask-tpl').innerHTML); $('#mtask-rows [data-trow]:last-child input')?.focus(); },
+  'mtask-done': el => { if (!may('clinical.edit')) { el.checked = !el.checked; return toast(NO_PERM_ACT); } const x = S.clin.meetings.find(y => y.id === el.dataset.id), t = x?.tasks[+el.dataset.i]; if (!t) return; t.done = el.checked; t.done_by = me().id; t.done_at = nowIso(); stamp(x); refresh(); },
   'medrec-del': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !def.removable || !may(def.write)) return toast(NO_PERM_ACT); const x = S.clin[def.coll].find(y => y.id === el.dataset.id); if (!x) return; x.removed = { at: nowIso(), by: me().id }; stamp(x); UI.confirm = null; refresh(); toast('הרשומה הוסרה (נשמרת בהיסטוריה)'); },
   'medrec-edit': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, id: el.dataset.id }); },
   'new-prospect': () => { if (!may('prospects.create')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); openPanel({ type: 'prospect' }); },
