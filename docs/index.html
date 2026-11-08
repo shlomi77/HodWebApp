@@ -407,7 +407,7 @@ tr.stopped td{opacity:.55}
    Core: helpers, time (Asia/Jerusalem), constants, storage, seed,
    permissions, router and rendering.
    ================================================================ */
-const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 9;
+const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 10;
 const IDLE_MS = 15 * 60 * 1000;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -483,6 +483,14 @@ const MED_ROUTES = ['פומי', 'תת-לשוני', 'מקומי', 'אינהלצי
 const NURSE_FLAGS = ['כאב', 'נפילה', 'שינוי התנהגות', 'סירוב לטיפול', 'פצע לחץ', 'אחר'];
 const DISCIPLINES = ['סיעוד', 'פיזיותרפיה', 'ריפוי בעיסוק', 'תזונה', 'עבודה סוציאלית', 'רפואה'];
 const FU_STATUS = ['פתוח', 'בטיפול', 'הושג', 'הופסק'];
+const VACCINES = ['שפעת', 'קורונה', 'פנאומוקוק', 'שלבקת חוגרת', 'טטנוס'];
+const INJ_SITES = ['זרוע ימין', 'זרוע שמאל', 'בטן', 'ירך', 'עכוז'];
+const TEST_STATUS = ['הוזמנה', 'בוצעה', 'התקבלה תשובה', 'בוטלה'];
+const REFERRAL_TYPES = ['רופא/ה מומחה/ית', 'מרפאה', 'בית חולים', 'בדיקה'];
+const REFERRAL_URGENCY = { normal: 'רגילה', urgent: 'דחופה', immediate: 'מיידית' };
+const REFERRAL_URG_CHIP = { normal: '', urgent: 'warn', immediate: 'red' };
+const REFERRAL_STATUS = { pending: 'ממתינה', scheduled: 'נקבע תור', done: 'בוצעה', cancelled: 'בוטלה' };
+const REFERRAL_ST_CHIP = { pending: 'warn', scheduled: 'blue', done: 'ok', cancelled: '' };
 const FUNDING = ['פרטי', 'משרד הבריאות', 'משרד הרווחה', 'ביטוח סיעודי'];
 const URG = { normal: 'רגילה', urgent: 'דחופה', critical: 'דחוף ביותר' };
 const URG_CHIP = { normal: '', urgent: 'warn', critical: 'red' };
@@ -723,7 +731,7 @@ function seed() {
     return { id: 'P' + String(i + 1).padStart(3, '0'), first_name: first, last_name: last, phone: `050-00000${pad(70 + i)}`, email: i % 4 === 0 ? `prospect${i + 1}@example.com` : '', source: PROSPECT_SOURCES[i % PROSPECT_SOURCES.length], first_contact: fc, status: st, notes: i % 3 === 0 ? 'מעדיפים קומה נמוכה.' : '', followups: fus, resident_id: null, created_by: by, created_at: at(fc, '11:00'), updated_by: fus.at(-1).by, updated_at: fus.at(-1).at };
   });
   { const r60 = D.residents[59], pj = D.prospects[10]; Object.assign(pj, { first_name: r60.first_name, last_name: r60.last_name, resident_id: r60.id }); } // one joined prospect already converted
-  D.clin = { intake: [], allergies: [], diagnoses: [], labs: [], medreport: [], nursereport: [], followup: [], meetings: [] };
+  D.clin = { intake: [], allergies: [], diagnoses: [], labs: [], medreport: [], nursereport: [], followup: [], meetings: [], vaccines: [], injections: [], tests: [], referrals: [] };
   { // reports, treatment follow-up and team meetings for ~15 residents
     const pushC = (coll, pre, o) => { const t = o.created_at || at(o.at, '12:00'); D.clin[coll].push({ id: pre + (D.clin[coll].length + 1), created_by: o.by, created_at: t, updated_by: o.by, updated_at: t, ...o }); };
     const MR = [['לחץ דם מאוזן, ללא תלונות חדשות.', 'להמשיך טיפול קבוע, מעקב לחץ דם שבועי.'], ['תלונה על כאבי ברכיים, ללא סימני דלקת.', 'משכך כאבים לפי הצורך, הפניה לפיזיותרפיה.'], ['שיעול יבש כשבוע, ריאות נקיות בהאזנה.', 'מעקב, שתייה מרובה, לחזור אם יש חום.'], ['בדיקה תקופתית, מצב יציב.', 'בדיקות דם שגרתיות בעוד 3 חודשים.']];
@@ -737,6 +745,20 @@ function seed() {
       if (i % 3 === 0) { const dt = addDays(today(), -(7 + i * 4)); pushC('meetings', 'TM', { resident_id: r.id, at: dt, participants: ['U3', 'U4', 'U7'].concat(i % 2 ? ['U2'] : []), participants_other: i % 2 ? 'בת המשפחה' : '', summary: 'ישיבת צוות רב-מקצועית: סקירת מצב תפקודי, תרופות וחברה.', decisions: 'להמשיך תוכנית טיפול, לעדכן את המשפחה.',
         tasks: [{ text: 'עדכון המשפחה בסיכום הישיבה', owner: 'U4', due: addDays(dt, 3), done: true }, { text: 'בדיקת התאמת עזרי הליכה', owner: 'U3', due: addDays(today(), 5), done: false }], by: 'U3' }); }
     });
+    // vaccines: flu for most residents, a few others; injections for ~8; tests across statuses; referrals for ~10 across all types / urgencies / statuses
+    D.residents.forEach((r, i) => {
+      if (isGone(r)) return; const nurse = i % 2 ? 'אחראי משמרת' : 'אחות 1', by = i % 2 ? 'U2' : 'U3';
+      if (i % 7 !== 3) { const dt = addDays(today(), -(20 + i % 40)); pushC('vaccines', 'VC', { resident_id: r.id, vaccine: 'שפעת', at: dt, dose_no: 1, given_by: nurse, next_due: addDays(dt, 365), by }); }
+      if (i % 5 === 0) { const dt = addDays(today(), -(200 + i * 3)), v = VACCINES[1 + (i / 5) % 4]; pushC('vaccines', 'VC', { resident_id: r.id, vaccine: v, at: dt, dose_no: 1 + (i % 3), given_by: nurse, next_due: v === 'קורונה' ? addDays(dt, 180) : '', by }); } // corona → overdue
+    });
+    const INJ = [['DEMOLIN DEPOT', '1 מ״ל'], ['SAMPLEX INJ', '0.5 מ״ל'], ['FICTOZOL INJ', '20 יחידות'], ['TRIALIN B12', '1 אמפולה']];
+    D.residents.filter((_, i) => i % 7 === 2).slice(0, 8).forEach((r, i) => { for (let j = 0; j < 2; j++) { const t = ago(60 * 24 * (2 + j * 14 + i) + 60 * (i % 5)), [drug, dose] = INJ[(i + j) % INJ.length]; pushC('injections', 'IN', { resident_id: r.id, drug, dose, site: INJ_SITES[(i + j) % INJ_SITES.length], at: t, given_by: j ? 'אחראי משמרת' : 'אחות 1', by: j ? 'U2' : 'U3', created_at: t }); } });
+    const TESTS = ['בדיקת דם כללית', 'אק״ג', 'צילום חזה', 'בדיקת שתן', 'אולטרסאונד בטן', 'בדיקת שמיעה'];
+    D.residents.filter((_, i) => i % 5 === 1).slice(0, 10).forEach((r, i) => { const st = TEST_STATUS[i % 4], ord = addDays(today(), -(5 + i * 6)); pushC('tests', 'TS', { resident_id: r.id, test_type: TESTS[i % TESTS.length], at: ord, done_date: st === 'בוצעה' || st === 'התקבלה תשובה' ? addDays(ord, 3) : '', result: st === 'התקבלה תשובה' ? 'תקין, ללא ממצאים חריגים.' : '', status: st, by: i % 2 ? 'U2' : 'U3' }); });
+    const RT = [['רופא/ה מומחה/ית', 'קרדיולוג/ית לדוגמה'], ['מרפאה', 'מרפאת עיניים לדוגמה'], ['בית חולים', 'בית חולים לדוגמה – מרכז'], ['בדיקה', 'מכון דימות לדוגמה'], ['מרפאה', 'מרפאת כאב לדוגמה']];
+    const RSN = ['בירור כאבים בחזה במאמץ', 'ירידה בראייה', 'מעקב אחרי אשפוז', 'צילום לבירור שיעול ממושך', 'כאבי גב כרוניים'];
+    D.residents.filter((_, i) => i % 6 === 4).slice(0, 10).forEach((r, i) => { const [rt, target] = RT[i % RT.length], st = Object.keys(REFERRAL_STATUS)[i % 4], dt = addDays(today(), -(3 + i * 5));
+      pushC('referrals', 'RF', { resident_id: r.id, at: dt, ref_type: rt, target, reason: RSN[i % RSN.length], doctor: DOCS[i % 3], urgency: Object.keys(REFERRAL_URGENCY)[i % 3], status: st, appointment: st === 'scheduled' ? at(addDays(today(), 4 + i), '10:30') : st === 'done' ? at(addDays(dt, 2), '09:00') : '', result: st === 'done' ? 'נבדק/ה, הומלץ להמשיך מעקב.' : '', by: i % 2 ? 'U2' : 'U3' }); });
   }
   // allergies: migrate the seeded allergy names into structured records
   const ALG_TYPE = { 'פניצילין': 'תרופה', 'סולפה': 'תרופה', 'אספירין': 'תרופה', 'אגוזים': 'מזון', 'לטקס': 'אחר' }, ALG_REACT = ['פריחה', 'גרד', 'נפיחות', 'קוצר נשימה', 'בחילה'];
@@ -1296,7 +1318,7 @@ function fileTabs(r) {
     { id: 'events', name: 'אירועים' }, { id: 'nursing', name: 'סיעוד ותרופות', perm: 'clinical.view' }].filter(t => !t.perm || may(t.perm));
 }
 // a resident file opened inside a category shows only that category's sections
-const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'followup', 'contacts', 'movements', 'medreport', 'nursereport', 'diagnoses', 'allergies', 'vitals', 'meds', 'labs', 'meetings', 'events'] }; // medical grows with each R7 commit, in menu order
+const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'followup', 'contacts', 'movements', 'vaccines', 'medreport', 'nursereport', 'diagnoses', 'injections', 'allergies', 'vitals', 'meds', 'labs', 'meetings', 'events', 'tests', 'referrals'] }; // medical grows with each R7 commit, in menu order
 const fileCtx = () => UI.route === 'cat' ? { cat: UI.params[0], rid: UI.params[1], tab: UI.params[2] } : { cat: null, rid: UI.params[0], tab: UI.params[1] };
 const fileDefaultTab = ctx => ctx.cat ? CAT_SECTIONS[ctx.cat][0] : 'personal';
 const fileHref = (ctx, rid, tab) => ctx.cat ? `#/cat/${ctx.cat}/${rid}/${tab}` : `#/resident/${rid}/${tab}`;
@@ -2143,6 +2165,37 @@ const MED_SECTIONS = {
     cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'משתתפים', td: x => esc([...(x.participants || []).map(uname), x.participants_other].filter(Boolean).join(', ')) },
       { label: 'סיכום והחלטות', td: x => `${esc(x.summary)}${x.decisions ? `<br><small class="muted">החלטות: ${esc(x.decisions)}</small>` : ''}` },
       { label: 'משימות', td: x => (x.tasks || []).map((t, i) => `<label class="cb" style="min-height:30px;font-weight:500"><input type="checkbox" data-act="mtask-done" data-id="${x.id}" data-i="${i}" ${t.done ? 'checked' : ''} ${may('clinical.edit') ? '' : 'disabled'}> <span style="${t.done ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(t.text)}</span> <small class="muted">${esc(uname(t.owner))}${t.due ? ' · עד ' + fD(t.due) : ''}</small></label>`).join('<br>') || '—' }] },
+  vaccines: { name: 'חיסונים', icon: 'shield', coll: 'vaccines', prefix: 'VC', write: 'clinical.edit',
+    fields: [{ k: 'vaccine', label: 'חיסון', type: 'datalist', opts: VACCINES, req: 1 }, { k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'dose_no', label: 'מנה מס׳', type: 'number', req: 1 },
+      { k: 'given_by', label: 'ניתן ע״י', type: 'datalist', opts: () => S.users.filter(u => u.active).map(u => u.name), req: 1 }, { k: 'next_due', label: 'מועד המנה הבאה', type: 'date' }],
+    defaults: () => ({ at: today(), dose_no: 1, given_by: me().name }),
+    validate: d => { const e = {}; if (futureDate(d.at)) e.at = 'לא יכול להיות בעתיד'; if (d.dose_no !== '' && (+d.dose_no < 1 || !Number.isInteger(+d.dose_no))) e.dose_no = 'מספר שלם, 1 ומעלה'; if (d.next_due && d.at && d.next_due < d.at) e.next_due = 'לא לפני תאריך החיסון'; return e; },
+    filters: [{ k: 'vaccine', label: 'כל החיסונים', opts: Object.fromEntries(VACCINES.map(x => [x, x])) }], match: (x, f) => !f.vaccine || x.vaccine === f.vaccine,
+    cols: [{ label: 'חיסון', td: x => `<b>${esc(x.vaccine)}</b>` }, { label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'מנה', td: x => `<span class="num">${esc(x.dose_no)}</span>` }, { label: 'ניתן ע״י', td: x => esc(x.given_by) },
+      { label: 'מנה הבאה', td: x => x.next_due ? `<span class="num">${fD(x.next_due)}</span>${x.next_due < today() ? ' <span class="chip red">באיחור</span>' : ''}` : '—' }] },
+  injections: { name: 'מתן זריקות', icon: 'syringe', coll: 'injections', prefix: 'IN', write: 'clinical.edit',
+    fields: [{ k: 'drug', label: 'תרופה (שם פיקטיבי)', type: 'text', req: 1 }, { k: 'dose', label: 'מינון', type: 'text', req: 1 }, { k: 'site', label: 'מקום ההזרקה', type: 'select', opts: INJ_SITES, req: 1 },
+      { k: 'at', label: 'תאריך ושעה', type: 'datetime', req: 1 }, { k: 'given_by', label: 'ניתן ע״י', type: 'datalist', opts: () => S.users.filter(u => u.active).map(u => u.name), req: 1 }],
+    defaults: () => ({ at: nowIso(), given_by: me().name }), validate: d => d.at && Date.parse(wallToIso(d.at)) > Date.now() + 60000 ? { at: 'לא יכול להיות בעתיד' } : {},
+    cols: [{ label: 'זמן', td: x => `<span class="num">${fDT(x.at)}</span>` }, { label: 'תרופה', td: x => `<b>${esc(x.drug)}</b>` }, { label: 'מינון', td: x => esc(x.dose) }, { label: 'מקום', td: x => esc(x.site) }, { label: 'ניתן ע״י', td: x => esc(x.given_by) }] },
+  tests: { name: 'בדיקות', icon: 'clip', coll: 'tests', prefix: 'TS', write: 'clinical.edit',
+    fields: [{ k: 'test_type', label: 'סוג בדיקה', type: 'text', req: 1 }, { k: 'at', label: 'תאריך הזמנה', type: 'date', req: 1 }, { k: 'done_date', label: 'תאריך ביצוע', type: 'date' },
+      { k: 'status', label: 'סטטוס', type: 'select', opts: TEST_STATUS, req: 1 }, { k: 'result', label: 'תוצאה / סיכום', type: 'textarea' }],
+    defaults: () => ({ at: today(), status: 'הוזמנה' }), validate: d => { const e = {}; if (futureDate(d.at)) e.at = 'לא יכול להיות בעתיד'; if (d.done_date && d.at && d.done_date < d.at) e.done_date = 'לא לפני תאריך ההזמנה'; return e; },
+    filters: [{ k: 'status', label: 'כל הסטטוסים', opts: Object.fromEntries(TEST_STATUS.map(x => [x, x])) }], match: (x, f) => !f.status || x.status === f.status,
+    cols: [{ label: 'בדיקה', td: x => `<b>${esc(x.test_type)}</b>` }, { label: 'הוזמנה', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'בוצעה', td: x => `<span class="num">${fD(x.done_date) || '—'}</span>` },
+      { label: 'סטטוס', td: x => `<span class="chip ${{ 'הוזמנה': 'warn', 'בוצעה': 'blue', 'התקבלה תשובה': 'ok', 'בוטלה': '' }[x.status]}">${esc(x.status)}</span>` }, { label: 'תוצאה', td: x => esc(x.result || '—') }] },
+  referrals: { name: 'הפניות', icon: 'send', coll: 'referrals', prefix: 'RF', write: 'clinical.edit',
+    fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'ref_type', label: 'הפניה אל – סוג', type: 'select', opts: REFERRAL_TYPES, req: 1 }, { k: 'target', label: 'הפניה אל – שם', type: 'text', req: 1, hint: 'לדוגמה: מרפאת עיניים לדוגמה' },
+      { k: 'reason', label: 'סיבת ההפניה', type: 'textarea', req: 1 }, { k: 'doctor', label: 'רופא/ה מפנה', type: 'datalist', opts: () => S.settings.doctors, req: 1 },
+      { k: 'urgency', label: 'דחיפות', type: 'select', opts: REFERRAL_URGENCY, req: 1 }, { k: 'status', label: 'סטטוס', type: 'select', opts: REFERRAL_STATUS, req: 1 },
+      { k: 'appointment', label: 'מועד התור', type: 'datetime' }, { k: 'result', label: 'סיכום תוצאה', type: 'textarea' }],
+    defaults: () => ({ at: today(), urgency: 'normal', status: 'pending' }),
+    validate: d => { const e = {}; if (futureDate(d.at)) e.at = 'לא יכול להיות בעתיד'; if (d.status === 'scheduled' && !d.appointment) e.appointment = 'בסטטוס "נקבע תור" חובה להזין מועד'; if (d.appointment && d.at && d.appointment.slice(0, 10) < d.at) e.appointment = 'המועד לא יכול להיות לפני תאריך ההפניה'; if (d.status === 'done' && !d.result) e.result = 'בסטטוס "בוצעה" חובה לכתוב סיכום תוצאה'; return e; },
+    filters: [{ k: 'status', label: 'כל הסטטוסים', opts: REFERRAL_STATUS }, { k: 'urgency', label: 'כל הדחיפויות', opts: REFERRAL_URGENCY }], match: (x, f) => (!f.status || x.status === f.status) && (!f.urgency || x.urgency === f.urgency),
+    cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'הפניה אל', td: x => `<b>${esc(x.target)}</b><br><small class="muted">${esc(x.ref_type)}</small>` }, { label: 'סיבה', td: x => esc(x.reason) },
+      { label: 'רופא/ה מפנה', td: x => esc(x.doctor) }, { label: 'דחיפות', td: x => `<span class="chip ${REFERRAL_URG_CHIP[x.urgency]}">${REFERRAL_URGENCY[x.urgency]}</span>` },
+      { label: 'סטטוס', td: x => `<span class="chip ${REFERRAL_ST_CHIP[x.status]}">${REFERRAL_STATUS[x.status]}</span>${x.appointment ? `<br><small class="muted num">תור: ${fDT(x.appointment)}</small>` : ''}${x.result ? `<br><small class="muted">${esc(x.result)}</small>` : ''}` }] },
   diagnoses: { name: 'אבחנות', icon: 'clip', coll: 'diagnoses', prefix: 'DX', write: 'clinical.edit',
     fields: [{ k: 'diagnosis', label: 'אבחנה', type: 'text', req: 1 }, { k: 'code', label: 'קוד (רשות)', type: 'text' }, { k: 'at', label: 'תאריך אבחון', type: 'date', req: 1 },
       { k: 'status', label: 'מצב', type: 'select', opts: { active: 'פעילה', past: 'עבר' }, req: 1 }, { k: 'doctor', label: 'רופא/ה מאבחן/ת', type: 'datalist', opts: () => S.settings.doctors }],
