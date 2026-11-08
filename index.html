@@ -946,6 +946,9 @@ const NAV = [
   { id: 'meds', name: 'תרופות/סיעוד', icon: 'pill', perm: 'meds.view' }, { id: 'prospects', name: 'מתעניינים', icon: 'megaphone', perm: 'prospects.view' }, { id: 'reports', name: 'דוחות', icon: 'chart', perm: 'reports.view' },
   { id: 'settings', name: 'הגדרות', icon: 'gear', perm: 'settings.view' }];
 const ROUTE_PERM = { resident: 'res.view' };
+// shortcut order: the pre-R4 items keep their numbers; prospects takes the next free number
+const navShortcuts = () => { const v = NAV.filter(n => may(n.perm)); return [...v.filter(n => n.id !== 'prospects'), ...v.filter(n => n.id === 'prospects')]; };
+const altKeyOf = id => { const i = navShortcuts().findIndex(n => n.id === id); return i < 0 || i > 9 ? '' : String((i + 1) % 10); }; // 10th → Alt+0
 // home page categories (#/home tiles → #/cat/<id>); perm is a function so marketing can check prospects.view
 const CATS = [
   { id: 'admin', name: 'מנהלה', icon: 'note', perm: () => may('res.view'), desc: 'פרטים אישיים · אנשי קשר · יומן קשר · תנועות · סבב · קריאות שירות' },
@@ -1105,8 +1108,8 @@ function navBadge(id) {
 }
 function renderNav() {
   const cur = UI.route === 'resident' ? 'residents' : UI.route;
-  $('#nav').innerHTML = (may('home.view') ? `<a href="#/home" ${cur === 'home' ? 'aria-current="page"' : ''}>${ic('home')}<span>ראשי</span></a>` : '') + NAV.filter(n => may(n.perm)).map((n, i) => `<a href="#/${n.id}" ${cur === n.id ? 'aria-current="page"' : ''} title="Alt+${i + 1}">${ic(n.icon)}<span>${n.name}</span>${navBadge(n.id)}</a>`).join('')
-    + `<div class="foot"><span class="kbdhelp"><kbd>/</kbd> חיפוש · <kbd>Esc</kbd> סגירה · <kbd>Alt</kbd>+<kbd>1-9</kbd> מסכים</span><button data-act="theme">החלפת מצב תצוגה (בהיר/כהה)</button></div>`;
+  $('#nav').innerHTML = (may('home.view') ? `<a href="#/home" ${cur === 'home' ? 'aria-current="page"' : ''}>${ic('home')}<span>ראשי</span></a>` : '') + NAV.filter(n => may(n.perm)).map(n => `<a href="#/${n.id}" ${cur === n.id ? 'aria-current="page"' : ''}${altKeyOf(n.id) ? ` title="Alt+${altKeyOf(n.id)}"` : ''}>${ic(n.icon)}<span>${n.name}</span>${navBadge(n.id)}</a>`).join('')
+    + `<div class="foot"><span class="kbdhelp"><kbd>/</kbd> חיפוש · <kbd>Esc</kbd> סגירה · <kbd>Alt</kbd>+<kbd>0-9</kbd> מסכים</span><button data-act="theme">החלפת מצב תצוגה (בהיר/כהה)</button></div>`;
 }
 function tick() { const c = $('#clock'); if (c) { const d = new Date(); c.textContent = `${dow(today())}, ${fD(d)} · ${fT(d)}`; } }
 
@@ -2818,7 +2821,7 @@ document.addEventListener('keydown', ev => {
   }
   if (ev.key === 'Escape') { if (UI.confirm) { UI.confirm = null; renderMain(); renderPanel(); } else if (UI.open.visit || UI.open.ng || UI.open.undo || UI.open.adm) { UI.open.visit = UI.open.ng = UI.open.undo = UI.open.adm = null; renderMain(); } else if (UI.panel) closePanel(); return; }
   if (ev.key === '/' && !typing && me()) { ev.preventDefault(); $('#gq')?.focus(); return; }
-  if (ev.altKey && /^[1-9]$/.test(ev.key) && me()) { const items = NAV.filter(n => may(n.perm)), n = items[+ev.key - 1]; if (n) { ev.preventDefault(); go('#/' + n.id); } }
+  if (ev.altKey && /^[0-9]$/.test(ev.key) && me()) { const n = navShortcuts()[ev.key === '0' ? 9 : +ev.key - 1]; if (n) { ev.preventDefault(); go('#/' + n.id); } }
   if (ev.key === 'Enter' && ev.target.id === 'undo-reason') { ev.preventDefault(); $('[data-act="undo-loc"]')?.click(); }
   if (ev.key === 'Enter' && ev.target.id === 'close-note') { ev.preventDefault(); $('[data-act="close-round"]')?.click(); }
 });
