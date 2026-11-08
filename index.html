@@ -1067,6 +1067,7 @@ function showErrors(form, errs) {
 }
 const fld = (label, inner, name, req, hint = '') => `<label class="fld${req ? ' req' : ''}"><span>${esc(label)}</span>${inner}${hint ? `<span class="hint">${hint}</span>` : ''}<span class="err" data-for="${name}"></span></label>`;
 const validPhone = p => !p || /^0\d{8,9}$/.test(p.replace(/[\s-]/g, ''));
+const validEmail = e => !e || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 const futureDate = d => d && d > today();
 
 /* ================================================================
@@ -1375,7 +1376,7 @@ function tabPersonal(r, ed) {
       <dt>מצב תפקודי</dt><dd>${esc(nursingNow(r))}</dd><dt>היסטוריית מצב תפקודי</dt><dd>${r.nursing_level.map(n => `${esc(n.level)} מ-${fD(n.from)}`).join(' ← ')}</dd>
       <dt>סבבים</dt><dd>${pref ? `<span class="chip vio">לא לאיתור</span> ${esc(pref.reason)}${pref.to ? ` (עד ${fD(pref.to)})` : ''}` : 'נבדק/ת בסבבים'}</dd>
       ${clin ? `<dt>רגישויות</dt><dd>${allergyNames(r).length ? `<span class="chip red">${esc(allergyNames(r).join(', '))}</span>` : 'לא ידוע על רגישויות'}</dd>` : ''}</dl></div>${audit(r)}`;
-  return `<form class="form" id="file-form" data-submit="file-save" data-dirty="1">
+  return `<form class="form" id="file-form" data-submit="file-save" data-dirty="1" novalidate>
     ${r._new ? `<div class="frow">${fld('תאריך כניסה לדיור', `<input name="admission_date" type="text" inputmode="numeric" data-date placeholder="dd/mm/yyyy" maxlength="10" value="">`, 'admission_date', 1, 'נרשם כתנועה הראשונה של הדייר/ת')}</div>` : ''}
     <div class="frow">${fld('שם פרטי', `<input name="first_name" type="text" value="${esc(r.first_name)}">`, 'first_name', 1)}${fld('שם משפחה', `<input name="last_name" type="text" value="${esc(r.last_name)}">`, 'last_name', 1)}
       ${fld('מזהה הדגמה', `<input type="text" value="${esc(r.demo_id)}" disabled>`, 'demo', 0, 'פורמט פיקטיבי, לא ת.ז אמיתית')}
@@ -1405,6 +1406,7 @@ function savePersonal(r, form) {
   if (!d.first_name) e.first_name = 'שדה חובה'; if (!d.last_name) e.last_name = 'שדה חובה';
   if (!d.birth_date) e.birth_date = 'שדה חובה'; else if (futureDate(d.birth_date)) e.birth_date = 'תאריך לידה לא יכול להיות בעתיד';
   if (!validPhone(d.phone)) e.phone = 'מספר טלפון: 9–10 ספרות שמתחילות ב-0';
+  if (!validEmail(d.email)) e.email = 'כתובת דוא״ל לא תקינה';
   if (d.lives_alone === 'no' && !d.arrangement) e.arrangement = 'בחרו סוג מגורים';
   if (d.no_check && !d.pref_reason) e.pref_reason = 'כתבו סיבה';
   if ('apartment' in d && !d.apartment) e.apartment = 'שדה חובה';
@@ -1451,7 +1453,7 @@ function saveContacts(r, form) {
     const bad = (k, msg) => { ok = false; er(k).textContent = msg; get(k).classList.add('inv'); };
     if (!c.name) bad('name', 'שדה חובה');
     if (!c.phone) bad('phone', 'שדה חובה'); else if (!validPhone(c.phone)) bad('phone', '9–10 ספרות שמתחילות ב-0');
-    if (c.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) bad('email', 'כתובת דוא״ל לא תקינה');
+    if (!validEmail(c.email)) bad('email', 'כתובת דוא״ל לא תקינה');
     out.push(c);
   }
   if (!ok) { form.querySelector('.inv')?.focus(); return false; }
@@ -2516,7 +2518,7 @@ function saveProspect(form) {
   const d = readForm(form), e = {};
   if (!d.first_name) e.first_name = 'שדה חובה'; if (!d.last_name) e.last_name = 'שדה חובה';
   if (!validPhone(d.phone)) e.phone = 'מספר טלפון: 9–10 ספרות שמתחילות ב-0';
-  if (d.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) e.email = 'כתובת דוא״ל לא תקינה';
+  if (!validEmail(d.email)) e.email = 'כתובת דוא״ל לא תקינה';
   if (!d.source) e.source = 'בחרו מקור'; if (!d.first_contact) e.first_contact = 'שדה חובה'; else if (futureDate(d.first_contact)) e.first_contact = 'לא יכול להיות בעתיד';
   if (!showErrors(form, e)) return;
   const data = { first_name: d.first_name, last_name: d.last_name, phone: d.phone, email: d.email, source: d.source, first_contact: d.first_contact, notes: d.notes };
