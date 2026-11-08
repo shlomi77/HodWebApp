@@ -407,7 +407,7 @@ tr.stopped td{opacity:.55}
    Core: helpers, time (Asia/Jerusalem), constants, storage, seed,
    permissions, router and rendering.
    ================================================================ */
-const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 10;
+const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 11;
 const IDLE_MS = 15 * 60 * 1000;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -491,6 +491,9 @@ const REFERRAL_URGENCY = { normal: 'רגילה', urgent: 'דחופה', immediate
 const REFERRAL_URG_CHIP = { normal: '', urgent: 'warn', immediate: 'red' };
 const REFERRAL_STATUS = { pending: 'ממתינה', scheduled: 'נקבע תור', done: 'בוצעה', cancelled: 'בוטלה' };
 const REFERRAL_ST_CHIP = { pending: 'warn', scheduled: 'blue', done: 'ok', cancelled: '' };
+const SOS_TRIGGER = ['לחצן מצוקה', 'שיחה'];
+const SOS_OUTCOME = ['שווא', 'טופל במקום', 'הוזעק רופא', 'פינוי לבי״ח', 'אחר'];
+const SERVICE_TYPES = ['ניקיון', 'כביסה', 'ליווי', 'תיקון בדירה', 'הסעה', 'אחר'];
 const FUNDING = ['פרטי', 'משרד הבריאות', 'משרד הרווחה', 'ביטוח סיעודי'];
 const URG = { normal: 'רגילה', urgent: 'דחופה', critical: 'דחוף ביותר' };
 const URG_CHIP = { normal: '', urgent: 'warn', critical: 'red' };
@@ -731,7 +734,7 @@ function seed() {
     return { id: 'P' + String(i + 1).padStart(3, '0'), first_name: first, last_name: last, phone: `050-00000${pad(70 + i)}`, email: i % 4 === 0 ? `prospect${i + 1}@example.com` : '', source: PROSPECT_SOURCES[i % PROSPECT_SOURCES.length], first_contact: fc, status: st, notes: i % 3 === 0 ? 'מעדיפים קומה נמוכה.' : '', followups: fus, resident_id: null, created_by: by, created_at: at(fc, '11:00'), updated_by: fus.at(-1).by, updated_at: fus.at(-1).at };
   });
   { const r60 = D.residents[59], pj = D.prospects[10]; Object.assign(pj, { first_name: r60.first_name, last_name: r60.last_name, resident_id: r60.id }); } // one joined prospect already converted
-  D.clin = { intake: [], allergies: [], diagnoses: [], labs: [], medreport: [], nursereport: [], followup: [], meetings: [], vaccines: [], injections: [], tests: [], referrals: [] };
+  D.clin = { intake: [], allergies: [], diagnoses: [], labs: [], medreport: [], nursereport: [], followup: [], meetings: [], vaccines: [], injections: [], tests: [], referrals: [], falls: [], sos: [], service: [] };
   { // reports, treatment follow-up and team meetings for ~15 residents
     const pushC = (coll, pre, o) => { const t = o.created_at || at(o.at, '12:00'); D.clin[coll].push({ id: pre + (D.clin[coll].length + 1), created_by: o.by, created_at: t, updated_by: o.by, updated_at: t, ...o }); };
     const MR = [['לחץ דם מאוזן, ללא תלונות חדשות.', 'להמשיך טיפול קבוע, מעקב לחץ דם שבועי.'], ['תלונה על כאבי ברכיים, ללא סימני דלקת.', 'משכך כאבים לפי הצורך, הפניה לפיזיותרפיה.'], ['שיעול יבש כשבוע, ריאות נקיות בהאזנה.', 'מעקב, שתייה מרובה, לחזור אם יש חום.'], ['בדיקה תקופתית, מצב יציב.', 'בדיקות דם שגרתיות בעוד 3 חודשים.']];
@@ -759,6 +762,17 @@ function seed() {
     const RSN = ['בירור כאבים בחזה במאמץ', 'ירידה בראייה', 'מעקב אחרי אשפוז', 'צילום לבירור שיעול ממושך', 'כאבי גב כרוניים'];
     D.residents.filter((_, i) => i % 6 === 4).slice(0, 10).forEach((r, i) => { const [rt, target] = RT[i % RT.length], st = Object.keys(REFERRAL_STATUS)[i % 4], dt = addDays(today(), -(3 + i * 5));
       pushC('referrals', 'RF', { resident_id: r.id, at: dt, ref_type: rt, target, reason: RSN[i % RSN.length], doctor: DOCS[i % 3], urgency: Object.keys(REFERRAL_URGENCY)[i % 3], status: st, appointment: st === 'scheduled' ? at(addDays(today(), 4 + i), '10:30') : st === 'done' ? at(addDays(dt, 2), '09:00') : '', result: st === 'done' ? 'נבדק/ה, הומלץ להמשיך מעקב.' : '', by: i % 2 ? 'U2' : 'U3' }); });
+    // fall reports: one linked to the seeded fall event EV-2026-001 (R012), a few unlinked
+    const ev1 = D.events.find(e => e.id === 'EV-2026-001');
+    pushC('falls', 'FL', { resident_id: 'R012', at: ev1.occurred_at, place: 'חדר אוכל', circumstances: 'נמצא/ה על הרצפה ליד השולחן, הרצפה הייתה רטובה אחרי ניקוי.', injury: true, injury_desc: 'שפשוף בברך ימין', actions: 'בדיקת אחות, קירור, מנוחה.', family_notified: true, family_at: fT(ev1.family_notified_at), doctor_notified: true, doctor_at: fT(ev1.doctor_notified_at), event_id: ev1.id, by: 'U3', created_at: ev1.reported_at });
+    [['R030', 'דירה', 'החליק/ה בכניסה למקלחת.', false], ['R041', 'לובי', 'מעד/ה על השטיח בכניסה.', true], ['R053', 'גינה', 'איבד/ה שיווי משקל בירידה מהמדרגה.', false]].forEach(([rid, place, circ, inj], i) => { const t = ago(60 * 24 * (3 + i * 9) + 300);
+      pushC('falls', 'FL', { resident_id: rid, at: t, place, circumstances: circ, injury: inj, injury_desc: inj ? 'חבלה קלה במרפק' : '', actions: 'נבדק/ה ע״י הצוות.', family_notified: i !== 2, family_at: i !== 2 ? fT(t) : '', doctor_notified: inj, doctor_at: inj ? fT(t) : '', event_id: '', by: i % 2 ? 'U2' : 'U3', created_at: t }); });
+    // SOS calls (~10)
+    D.residents.filter((_, i) => i % 6 === 3).slice(0, 10).forEach((r, i) => { const t = ago(60 * 24 * (1 + i * 3) + 60 * (i % 7)), resp = iso(new Date(Date.parse(t) + (2 + i * 3 % 13) * 60000));
+      pushC('sos', 'SO', { resident_id: r.id, at: t, trigger: SOS_TRIGGER[i % 2], response_at: resp, outcome: SOS_OUTCOME[i % SOS_OUTCOME.length], handler: ['U2', 'U3', 'U1'][i % 3], by: i % 2 ? 'U2' : 'U3', created_at: t }); });
+    // resident service reports, some linked to the resident's service calls
+    D.service_calls.filter(c => c.resident_id).slice(0, 6).forEach((c, i) => { const dt = dkey(c.opened_at); pushC('service', 'SV', { resident_id: c.resident_id, at: dt, service_type: 'תיקון בדירה', description: c.description, handler: c.handler, call_id: c.id, by: 'U2' }); });
+    D.residents.filter((_, i) => i % 9 === 5).slice(0, 5).forEach((r, i) => { const dt = addDays(today(), -(2 + i * 4)); pushC('service', 'SV', { resident_id: r.id, at: dt, service_type: SERVICE_TYPES[[0, 1, 2, 4, 5][i]], description: ['ניקיון יסודי בדירה', 'כביסה מיוחדת של מצעים', 'ליווי לבדיקה בקופת חולים', 'הסעה למרפאה', 'עזרה בסידור ארון'][i], handler: ['U2', 'U3', 'U1', 'U2', 'U3'][i], call_id: '', by: 'U3' }); });
   }
   // allergies: migrate the seeded allergy names into structured records
   const ALG_TYPE = { 'פניצילין': 'תרופה', 'סולפה': 'תרופה', 'אספירין': 'תרופה', 'אגוזים': 'מזון', 'לטקס': 'אחר' }, ALG_REACT = ['פריחה', 'גרד', 'נפיחות', 'קוצר נשימה', 'בחילה'];
@@ -1318,7 +1332,7 @@ function fileTabs(r) {
     { id: 'events', name: 'אירועים' }, { id: 'nursing', name: 'סיעוד ותרופות', perm: 'clinical.view' }].filter(t => !t.perm || may(t.perm));
 }
 // a resident file opened inside a category shows only that category's sections
-const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'followup', 'contacts', 'movements', 'vaccines', 'medreport', 'nursereport', 'diagnoses', 'injections', 'allergies', 'vitals', 'meds', 'labs', 'meetings', 'events', 'tests', 'referrals'] }; // medical grows with each R7 commit, in menu order
+const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'followup', 'contacts', 'movements', 'vaccines', 'medreport', 'nursereport', 'fall', 'sos', 'service', 'diagnoses', 'injections', 'allergies', 'vitals', 'meds', 'labs', 'meetings', 'events', 'tests', 'referrals'] }; // medical grows with each R7 commit, in menu order
 const fileCtx = () => UI.route === 'cat' ? { cat: UI.params[0], rid: UI.params[1], tab: UI.params[2] } : { cat: null, rid: UI.params[0], tab: UI.params[1] };
 const fileDefaultTab = ctx => ctx.cat ? CAT_SECTIONS[ctx.cat][0] : 'personal';
 const fileHref = (ctx, rid, tab) => ctx.cat ? `#/cat/${ctx.cat}/${rid}/${tab}` : `#/resident/${rid}/${tab}`;
@@ -1858,10 +1872,11 @@ function viewEvents() {
   </div>${eventTable(list)}`;
 }
 function eventForm(e, p) {
-  const x = e || { resident_ids: p.rids || [], type_id: '', occurred_at: nowIso(), location: '', description: '', severity: 'none', notifications: [] };
+  const x = e || { resident_ids: p.rids || [], type_id: '', occurred_at: nowIso(), location: '', description: '', severity: 'none', notifications: [], ...(p.prefill || {}) };
   const rlist = x.resident_ids.map(res).filter(Boolean);
   const notifyRows = t => evType(t).notify.map(nn => { const cur = x.notifications.find(z => z.to === nn.to) || {}; return `<div class="actions"><label class="cb"><input type="checkbox" name="ntf_${nn.to}" ${cur.done ? 'checked' : ''}> ${esc(NOTIFY_TO[nn.to])}</label><span class="hint">תוך ${nn.within_min >= 60 ? nn.within_min / 60 + ' שעות' : nn.within_min + ' דקות'}</span><input type="text" inputmode="numeric" data-time placeholder="00:00" maxlength="5" name="ntft_${nn.to}" value="${cur.at ? fT(cur.at) : ''}" aria-label="שעת עדכון"></div>`; }).join('');
-  return `<form class="form" data-submit="event" data-id="${e ? e.id : ''}" autocomplete="off">
+  return `<form class="form" data-submit="event" data-id="${e ? e.id : ''}" data-fall="${esc(p?.fall_id || '')}" autocomplete="off">
+    ${p?.fall_id ? `<p class="note-inline info">אירוע חריג מתוך דיווח נפילה – הפרטים מולאו מהדיווח. אחרי השמירה האירוע יקושר לדיווח.</p>` : ''}
     ${fld('סוג אירוע', `<select name="type_id" data-ch="ev-type" autofocus>${opt('', 'בחרו…', x.type_id)}${S.event_types.filter(t => t.active || t.id === x.type_id).map(t => opt(t.id, t.name, x.type_id)).join('')}</select>`, 'type_id', 1)}
     <div data-when="type_id:E_VIOLENCE" class="note-inline red">חובת דיווח: באירוע אלימות כלפי אדם זקן חלה חובה לדווח למשטרה או לפקיד סעד (סעיף 368ד לחוק העונשין). סמנו אם דווח, או כתבו את סיבת אי-הדיווח.
       <div class="actions" style="margin-top:6px"><label class="cb"><input type="radio" name="police" value="yes" ${x.police_reported === true ? 'checked' : ''}> דווח</label><label class="cb"><input type="radio" name="police" value="no" ${x.police_reported === false ? 'checked' : ''}> לא דווח</label></div>
@@ -1937,6 +1952,7 @@ function saveEvent(form, submitter) {
   const t = nowIso(), by = me().id; let ev = form.dataset.id && byId(S.events, form.dataset.id);
   if (ev) { Object.assign(ev, data); stamp(ev); }
   else { const y = today().slice(0, 4), n = 1 + Math.max(0, ...S.events.filter(x => x.id.startsWith('EV-' + y)).map(x => +x.id.split('-')[2])); ev = stamp({ id: `EV-${y}-${String(n).padStart(3, '0')}`, ...data, reported_at: null, reported_by: by, status: 'draft', review: null, addenda: [], history: [{ status: 'draft', at: t, by }] }, true); S.events.push(ev); }
+  if (form.dataset.fall) { const fl = (S.clin.falls || []).find(f => f.id === form.dataset.fall); if (fl && !fl.event_id) { fl.event_id = ev.id; stamp(fl); } }
   if (go === 'report') { ev.status = 'reported'; ev.reported_at = t; ev.history.push({ status: 'reported', at: t, by }); toast(`אירוע ${ev.id} דווח. תודה!`); } else toast(`נשמר כטיוטה (${ev.id})`);
   UI.panel = { type: 'event', id: ev.id }; refresh();
 }
@@ -2196,6 +2212,37 @@ const MED_SECTIONS = {
     cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'הפניה אל', td: x => `<b>${esc(x.target)}</b><br><small class="muted">${esc(x.ref_type)}</small>` }, { label: 'סיבה', td: x => esc(x.reason) },
       { label: 'רופא/ה מפנה', td: x => esc(x.doctor) }, { label: 'דחיפות', td: x => `<span class="chip ${REFERRAL_URG_CHIP[x.urgency]}">${REFERRAL_URGENCY[x.urgency]}</span>` },
       { label: 'סטטוס', td: x => `<span class="chip ${REFERRAL_ST_CHIP[x.status]}">${REFERRAL_STATUS[x.status]}</span>${x.appointment ? `<br><small class="muted num">תור: ${fDT(x.appointment)}</small>` : ''}${x.result ? `<br><small class="muted">${esc(x.result)}</small>` : ''}` }] },
+  fall: { name: 'דיווח נפילה', icon: 'alert', coll: 'falls', prefix: 'FL', write: 'clinical.edit',
+    fields: [{ k: 'at', label: 'תאריך ושעה', type: 'datetime', req: 1 }, { k: 'place', label: 'מקום', type: 'select', opts: [...COMMON_AREAS, 'דירה'], req: 1 }, { k: 'circumstances', label: 'נסיבות', type: 'textarea', req: 1 },
+      { k: 'injury', label: 'הייתה פגיעה', type: 'bool' }, { k: 'injury_desc', label: 'תיאור הפגיעה', type: 'text', when: 'injury:on', req: 1 }, { k: 'actions', label: 'פעולות שננקטו', type: 'textarea' },
+      { k: 'family_notified', label: 'המשפחה עודכנה', type: 'bool' }, { k: 'family_at', label: 'שעת עדכון המשפחה', type: 'time', when: 'family_notified:on' },
+      { k: 'doctor_notified', label: 'רופא/ה עודכן/ה', type: 'bool' }, { k: 'doctor_at', label: 'שעת עדכון הרופא/ה', type: 'time', when: 'doctor_notified:on' },
+      { k: 'event_id', label: 'קישור לאירוע חריג', type: 'custom', html: (v, r) => fallEventField(v, r), read: form => form.elements.event_id?.value || '' }],
+    defaults: () => ({ at: nowIso() }),
+    validate: (d, x) => { const e = {}; if (d.at && Date.parse(wallToIso(d.at)) > Date.now() + 60000) e.at = 'לא יכול להיות בעתיד'; if (d.event_id && S.clin.falls.some(f => f.event_id === d.event_id && f.id !== x?.id)) e.event_id = 'האירוע כבר מקושר לדיווח נפילה אחר'; return e; },
+    after: (rec, isNew, d) => { if (!rec.event_id && d.open_event) { const r = res(rec.resident_id), dk = dkey(rec.at), t = v => v ? at(dk, v) : null;
+      openPanel({ type: 'event', rids: [r.id], fall_id: rec.id, prefill: { type_id: 'E_FALL', occurred_at: rec.at, location: rec.place === 'דירה' ? 'דירה ' + r.apartment : rec.place, description: rec.circumstances, immediate_actions: rec.actions || '',
+        injury: rec.injury, injury_desc: rec.injury_desc, family_notified: rec.family_notified, family_notified_at: rec.family_notified ? t(rec.family_at) || rec.at : null, doctor_notified: rec.doctor_notified, doctor_notified_at: rec.doctor_notified ? t(rec.doctor_at) || rec.at : null } }); } },
+    cols: [{ label: 'זמן', td: x => `<span class="num">${fDT(x.at)}</span>` }, { label: 'מקום', td: x => esc(x.place) }, { label: 'נסיבות', td: x => esc(x.circumstances) },
+      { label: 'פגיעה', td: x => x.injury ? `<span class="chip red">כן</span> ${esc(x.injury_desc)}` : 'לא' },
+      { label: 'עדכונים', td: x => `<small>משפחה: ${x.family_notified ? 'כן ' + esc(x.family_at || '') : 'לא'}<br>רופא/ה: ${x.doctor_notified ? 'כן ' + esc(x.doctor_at || '') : 'לא'}</small>` },
+      { label: 'אירוע חריג', td: x => x.event_id ? `<button class="btn sm" data-act="open-event" data-id="${esc(x.event_id)}">${esc(x.event_id)}</button>` : '<span class="muted">לא מקושר</span>' }] },
+  sos: { name: 'SOS', icon: 'bell', coll: 'sos', prefix: 'SO', write: 'clinical.edit',
+    fields: [{ k: 'at', label: 'תאריך ושעה', type: 'datetime', req: 1 }, { k: 'trigger', label: 'הפעלה', type: 'select', opts: SOS_TRIGGER, req: 1 }, { k: 'response_at', label: 'זמן תגובה', type: 'datetime' },
+      { k: 'outcome', label: 'תוצאה', type: 'select', opts: SOS_OUTCOME, req: 1 }, { k: 'handler', label: 'מטפל/ת', type: 'select', opts: () => Object.fromEntries(S.users.filter(u => u.active).map(u => [u.id, u.name])) }],
+    defaults: () => ({ at: nowIso(), handler: me().id }),
+    validate: d => { const e = {}; if (d.at && Date.parse(wallToIso(d.at)) > Date.now() + 60000) e.at = 'לא יכול להיות בעתיד'; if (d.response_at && d.at && Date.parse(wallToIso(d.response_at)) < Date.parse(wallToIso(d.at))) e.response_at = 'זמן התגובה לא יכול להיות לפני ההפעלה'; return e; },
+    filters: [{ k: 'outcome', label: 'כל התוצאות', opts: Object.fromEntries(SOS_OUTCOME.map(x => [x, x])) }], match: (x, f) => !f.outcome || x.outcome === f.outcome,
+    cols: [{ label: 'זמן', td: x => `<span class="num">${fDT(x.at)}</span>` }, { label: 'הפעלה', td: x => esc(x.trigger) }, { label: 'זמן תגובה', td: x => x.response_at ? `<span class="num">${fT(x.response_at)}</span> <span class="chip">${sosMinutes(x)} דק׳</span>` : '—' },
+      { label: 'תוצאה', td: x => `<span class="chip ${x.outcome === 'פינוי לבי״ח' ? 'red' : x.outcome === 'הוזעק רופא' ? 'warn' : ''}">${esc(x.outcome)}</span>` }, { label: 'מטפל/ת', td: x => esc(uname(x.handler)) }] },
+  service: { name: 'דיווח שירות לדייר', icon: 'wrench', coll: 'service', prefix: 'SV', write: 'clinical.edit',
+    fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'service_type', label: 'סוג שירות', type: 'select', opts: SERVICE_TYPES, req: 1 }, { k: 'description', label: 'תיאור', type: 'textarea', req: 1 },
+      { k: 'handler', label: 'מטפל/ת', type: 'select', opts: () => Object.fromEntries(S.users.filter(u => u.active).map(u => [u.id, u.name])) },
+      { k: 'call_id', label: 'קישור לקריאת שירות (רשות)', type: 'select', opts: r => Object.fromEntries(S.service_calls.filter(c => c.resident_id === r.id).map(c => [c.id, `${c.id} · ${c.description} (${CALL_STATUS[c.status]})`])) }],
+    defaults: () => ({ at: today(), handler: me().id }), validate: d => futureDate(d.at) ? { at: 'לא יכול להיות בעתיד' } : {},
+    filters: [{ k: 'service_type', label: 'כל סוגי השירות', opts: Object.fromEntries(SERVICE_TYPES.map(x => [x, x])) }], match: (x, f) => !f.service_type || x.service_type === f.service_type,
+    cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'סוג', td: x => esc(x.service_type) }, { label: 'תיאור', td: x => esc(x.description) }, { label: 'מטפל/ת', td: x => esc(uname(x.handler)) },
+      { label: 'קריאת שירות', td: x => { const c = x.call_id && byId(S.service_calls, x.call_id); return c ? `<button class="btn sm" data-act="open-call" data-id="${c.id}">${c.id}</button> <span class="chip ${CALL_CHIP[c.status]}">${CALL_STATUS[c.status]}</span>` : '—'; } }] },
   diagnoses: { name: 'אבחנות', icon: 'clip', coll: 'diagnoses', prefix: 'DX', write: 'clinical.edit',
     fields: [{ k: 'diagnosis', label: 'אבחנה', type: 'text', req: 1 }, { k: 'code', label: 'קוד (רשות)', type: 'text' }, { k: 'at', label: 'תאריך אבחון', type: 'date', req: 1 },
       { k: 'status', label: 'מצב', type: 'select', opts: { active: 'פעילה', past: 'עבר' }, req: 1 }, { k: 'doctor', label: 'רופא/ה מאבחן/ת', type: 'datalist', opts: () => S.settings.doctors }],
@@ -2308,6 +2355,13 @@ function meetingTasksField(v) {
   return `<fieldset><legend>משימות להמשך</legend><div id="mtask-rows" class="form">${(v || []).map(row).join('')}</div><template id="mtask-tpl">${row()}</template>
     <div class="actions"><button type="button" class="btn sm" data-act="mtask-add">${ic('plus')} הוספת משימה</button><span class="err" data-for="tasks"></span></div></fieldset>`;
 }
+const sosMinutes = x => Math.round((Date.parse(x.response_at) - Date.parse(x.at)) / 60000);
+function fallEventField(v, r) {
+  const evs = S.events.filter(e => e.type_id === 'E_FALL' && e.resident_ids.includes(r.id));
+  return `<fieldset><legend>קישור לאירוע חריג</legend>
+    ${fld('אירוע נפילה קיים של הדייר/ת', `<select name="event_id">${opt('', evs.length ? 'ללא קישור' : 'אין אירועי נפילה לדייר/ת', v)}${evs.map(e => opt(e.id, `${e.id} · ${fDT(e.occurred_at)} · ${EV_STATUS[e.status]}`, v)).join('')}</select>`, 'event_id')}
+    ${v ? '' : `<label class="cb"><input type="checkbox" name="open_event"> פתח אירוע חריג חדש (נפתח טופס האירוע עם הפרטים מהדיווח)</label>`}</fieldset>`;
+}
 const labOut = x => (x.low !== '' && x.low != null && +x.value < +x.low) || (x.high !== '' && x.high != null && +x.value > +x.high);
 function vitalsSection(r) {
   const f = F('med_vitals', { type: '' });
@@ -2335,7 +2389,8 @@ function viewMedicalFile() {
   const secs = CAT_SECTIONS.medical.filter(id => MED_SECTIONS[id]), sec = secs.includes(ctx.tab) ? ctx.tab : secs[0], def = MED_SECTIONS[sec];
   const editing = UI.edit && UI.edit.rid === r.id && UI.edit.tab === sec;
   const body = def.render ? def.render(r, editing) : medList(r, sec);
-  const actions = def.actions ? def.actions(r, editing) : may(def.write) ? `<button class="btn pri" data-act="medrec-new" data-sec="${sec}" data-rid="${r.id}">${ic('plus')} הוספה</button>` : '<span class="chip">לקריאה בלבד</span>';
+  const actions = (def.actions ? def.actions(r, editing) : may(def.write) ? `<button class="btn pri" data-act="medrec-new" data-sec="${sec}" data-rid="${r.id}">${ic('plus')} הוספה</button>` : '<span class="chip">לקריאה בלבד</span>')
+    + (sec === 'service' && may('calls.create') ? ` <button class="btn" data-act="new-call" data-rid="${r.id}">פתח קריאת שירות</button>` : '');
   return `${UI.dirtyWarn ? `<div class="dirty-bar note-inline red" role="alert">יש שינויים שלא נשמרו. <button class="btn sm ok" data-act="file-save-dirty">שמירה</button> <button class="btn sm" data-act="file-discard">ביטול השינויים</button></div>` : ''}
   ${medHeader(r)}
   <div class="mfile">
@@ -2357,18 +2412,19 @@ function medList(r, sec) {
   ${list.map(x => `<tr class="${def.rowCls ? def.rowCls(x) : ''}">${def.cols.map(c => `<td>${c.td(x)}</td>`).join('')}<td><small>${esc(uname(x.by))}<br><span class="muted num">${fDT(x.created_at)}</span>${x.updated_at && x.updated_at !== x.created_at ? `<br><span class="muted">עודכן ${esc(uname(x.updated_by))} ${fDT(x.updated_at)}</span>` : ''}</small></td>
     ${canW ? `<td style="white-space:nowrap"><button class="btn sm" data-act="medrec-edit" data-sec="${sec}" data-id="${x.id}">עריכה</button>${def.removable ? (UI.confirm === 'medrm:' + x.id ? ` <span class="confirm">להסיר? <button class="btn sm danger" data-act="medrec-del" data-sec="${sec}" data-id="${x.id}">הסרה</button><button class="btn sm" data-act="confirm-cancel">ביטול</button></span>` : ` <button class="btn sm" data-act="confirm" data-key="medrm:${x.id}">הסרה</button>`) : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : empty('אין רשומות להצגה', canW ? 'לחצו "הוספה" כדי להוסיף.' : '')}`;
 }
-function medField(fd, v) {
-  const name = fd.k, o = typeof fd.opts === 'function' ? fd.opts() : fd.opts;
+function medField(fd, v, r) {
+  const name = fd.k, o = typeof fd.opts === 'function' ? fd.opts(r) : fd.opts;
   let inner;
   if (fd.type === 'textarea') inner = `<textarea name="${name}">${esc(v ?? '')}</textarea>`;
   else if (fd.type === 'date') inner = dIn(name, v || '');
   else if (fd.type === 'datetime') inner = dtIn(name, v ? isoToWall(v) : '');
+  else if (fd.type === 'time') inner = tIn(name, v || '');
   else if (fd.type === 'number') inner = `<input name="${name}" type="text" inputmode="decimal" value="${esc(v ?? '')}">`;
   else if (fd.type === 'bool') return `<div${fd.when ? ` data-when="${fd.when}"` : ''}><label class="cb"><input type="checkbox" name="${name}" ${v ? 'checked' : ''}> ${esc(fd.label)}</label><span class="err" data-for="${name}"></span></div>`;
   else if (fd.type === 'select') inner = `<select name="${name}">${opt('', 'בחרו…', v)}${Array.isArray(o) ? o.map(x => opt(x, x, v)).join('') : Object.entries(o).map(([k, l]) => opt(k, l, v)).join('')}</select>`;
   else if (fd.type === 'multi') inner = `<div class="actions">${(Array.isArray(o) ? o.map(x => [x, x]) : Object.entries(o)).map(([k, l]) => `<label class="cb"><input type="checkbox" name="${name}[]" value="${esc(k)}" ${(v || []).includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join('')}</div>`;
   else if (fd.type === 'datalist') inner = `<input name="${name}" type="text" list="dl-${name}" value="${esc(v ?? '')}"><datalist id="dl-${name}">${(o || []).map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
-  else if (fd.type === 'custom') return fd.html(v);
+  else if (fd.type === 'custom') return fd.html(v, r);
   else inner = `<input name="${name}" type="text" value="${esc(v ?? '')}">`;
   return `<div${fd.when ? ` data-when="${fd.when}"` : ''}>${fld(fd.label, inner, name, fd.req, fd.hint || '')}</div>`;
 }
@@ -2378,7 +2434,7 @@ function panelMedrec(p) {
   const v = x || (def.defaults ? def.defaults(r) : {});
   return `<div class="p-h"><div><h2>${esc(def.name)} – ${x ? 'עריכה' : 'רשומה חדשה'}</h2><div class="meta">${esc(fullName(r))} · דירה ${esc(r.apartment)}${x ? ` · נרשם ע״י ${esc(uname(x.by))} ${fDT(x.created_at)}` : ''}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
   <div class="p-b"><form class="form" data-submit="medrec" data-sec="${p.sec}" data-id="${x ? x.id : ''}" data-rid="${r.id}" autocomplete="off">
-    ${def.fields.map(fd => medField(fd, v[fd.k])).join('')}
+    ${def.fields.map(fd => medField(fd, v[fd.k], r)).join('')}
     <div class="actions"><button class="btn pri">שמירה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
 }
 function saveMedrec(form) {
@@ -2387,7 +2443,7 @@ function saveMedrec(form) {
   const d = readForm(form), e = {};
   for (const fd of def.fields) {
     if (fd.type === 'custom') { if (fd.read) d[fd.k] = fd.read(form); continue; }
-    const hidden = fd.when && form.querySelector(`[name="${fd.k}"],[name="${fd.k}__d"],[name="${fd.k}[]"]`)?.closest('[hidden]'); if (hidden) { d[fd.k] = fd.type === 'bool' ? false : fd.type === 'multi' ? [] : ''; continue; }
+    const hidden = fd.when && form.querySelector(`[name="${fd.k}"],[name="${fd.k}__d"],[name="${fd.k}[]"]`)?.closest('[hidden]'); if (hidden && fd.type === 'time') delete form._bad[fd.k]; if (hidden) { d[fd.k] = fd.type === 'bool' ? false : fd.type === 'multi' ? [] : ''; continue; }
     if (fd.type === 'multi') d[fd.k] = d[fd.k] || [];
     if (fd.req && (d[fd.k] === '' || d[fd.k] == null || (fd.type === 'multi' && !d[fd.k].length))) e[fd.k] = 'שדה חובה';
     else if (fd.type === 'number' && d[fd.k] !== '' && isNaN(+d[fd.k])) e[fd.k] = 'מספר בלבד';
