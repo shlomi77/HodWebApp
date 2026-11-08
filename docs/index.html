@@ -407,7 +407,7 @@ tr.stopped td{opacity:.55}
    Core: helpers, time (Asia/Jerusalem), constants, storage, seed,
    permissions, router and rendering.
    ================================================================ */
-const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 7;
+const STORE_KEY = 'hod_demo_v1', SESSION_KEY = 'hod_demo_session', SCHEMA_VERSION = 8;
 const IDLE_MS = 15 * 60 * 1000;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -498,6 +498,7 @@ const VITALS = {
   pulse: { name: 'דופק', unit: 'לדקה', ok: v => +v >= 50 && +v <= 100, ph: '72' },
   temp: { name: 'חום', unit: '°C', ok: v => +v >= 35.5 && +v <= 37.8, ph: '36.8' },
   sat: { name: 'סטורציה', unit: '%', ok: v => +v >= 92, ph: '97' },
+  glucose: { name: 'סוכר', unit: 'mg/dL', ok: v => +v >= 70 && +v <= 180, ph: '110' },
   weight: { name: 'משקל', unit: 'ק״ג', ok: () => true, ph: '65' }};
 
 /* ---------- seed (deterministic, fictitious only) ---------- */
@@ -698,6 +699,7 @@ function seed() {
     const t = ago(60 * 24 * k + 600);
     D.vitals.push({ id: uid('V'), resident_id: r.id, type: 'bp', value: `${115 + Math.floor(R() * 35)}/${68 + Math.floor(R() * 20)}`, at: t, by: 'U3' });
     D.vitals.push({ id: uid('V'), resident_id: r.id, type: 'pulse', value: String(60 + Math.floor(R() * 35)), at: t, by: 'U3' });
+    if (r.nursing_level[0].level !== 'עצמאי' || +r.id.slice(1) % 3 === 0) D.vitals.push({ id: uid('V'), resident_id: r.id, type: 'glucose', value: String(85 + Math.floor(R() * 120)), at: t, by: k % 2 ? 'U2' : 'U3' });
   }
   // contact log (יומן קשר) – synthetic entries with the residents' fictitious contacts
   D.contact_log = [];
@@ -718,7 +720,16 @@ function seed() {
     return { id: 'P' + String(i + 1).padStart(3, '0'), first_name: first, last_name: last, phone: `050-00000${pad(70 + i)}`, email: i % 4 === 0 ? `prospect${i + 1}@example.com` : '', source: PROSPECT_SOURCES[i % PROSPECT_SOURCES.length], first_contact: fc, status: st, notes: i % 3 === 0 ? 'מעדיפים קומה נמוכה.' : '', followups: fus, resident_id: null, created_by: by, created_at: at(fc, '11:00'), updated_by: fus.at(-1).by, updated_at: fus.at(-1).at };
   });
   { const r60 = D.residents[59], pj = D.prospects[10]; Object.assign(pj, { first_name: r60.first_name, last_name: r60.last_name, resident_id: r60.id }); } // one joined prospect already converted
-  D.clin = { intake: [] }; // medical-file section records: S.clin.<coll> = [{ id, resident_id, at, by, ...stamp }]
+  D.clin = { intake: [], allergies: [], diagnoses: [], labs: [] };
+  // allergies: migrate the seeded allergy names into structured records
+  const ALG_TYPE = { 'פניצילין': 'תרופה', 'סולפה': 'תרופה', 'אספירין': 'תרופה', 'אגוזים': 'מזון', 'לטקס': 'אחר' }, ALG_REACT = ['פריחה', 'גרד', 'נפיחות', 'קוצר נשימה', 'בחילה'];
+  D.residents.forEach((r, i) => { for (const a of r.allergies || []) { const t = ago(60 * 24 * (30 + i * 7)); D.clin.allergies.push({ id: 'AL' + (D.clin.allergies.length + 1), resident_id: r.id, at: dkey(t), allergen: a, type: ALG_TYPE[a] || 'אחר', reaction: ALG_REACT[i % ALG_REACT.length], severity: ['קלה', 'בינונית', 'חמורה'][i % 3], by: 'U3', created_by: 'U3', created_at: t, updated_by: 'U3', updated_at: t }); } delete r.allergies; });
+  // diagnoses: 1–3 generic diagnoses for most residents
+  const DX = [['יתר לחץ דם', 'I10'], ['סוכרת סוג 2', 'E11'], ['אוסטאופורוזיס', 'M81'], ['אי ספיקת לב', 'I50'], ['דמנציה קלה', 'F03'], ['פרפור פרוזדורים', 'I48'], ['היפותירואידיזם', 'E03'], ['דלקת מפרקים ניוונית', 'M19'], ['ירידה בשמיעה', 'H91'], ['קטרקט', 'H26']];
+  D.residents.forEach((r, i) => { if (i % 6 === 5) return; const k = 1 + (i % 3); for (let j = 0; j < k; j++) { const [dx, code] = DX[(i * 3 + j * 4) % DX.length], dt = addDays(today(), -(60 + ((i * 37 + j * 113) % 2500))), by = j % 2 ? 'U2' : 'U3'; D.clin.diagnoses.push({ id: 'DX' + (D.clin.diagnoses.length + 1), resident_id: r.id, at: dt, diagnosis: dx, code: j === 2 ? '' : code, status: (i + j) % 5 === 4 ? 'past' : 'active', doctor: DOCS[(i + j) % 3], by, created_by: by, created_at: at(dt, '12:00'), updated_by: by, updated_at: at(dt, '12:00') }); } });
+  // lab results: 3–6 rows for ~10 residents, a few out of range
+  const LABS = [['המוגלובין', 'g/dL', 12, 16], ['גלוקוז בצום', 'mg/dL', 70, 100], ['קריאטינין', 'mg/dL', 0.6, 1.2], ['נתרן', 'mEq/L', 135, 145], ['אשלגן', 'mEq/L', 3.5, 5.1], ['TSH', 'mIU/L', 0.4, 4.0]];
+  D.residents.filter((_, i) => i % 6 === 1).slice(0, 10).forEach((r, i) => { for (let j = 0; j < 3 + (i % 4); j++) { const [test, unit, lo, hi] = LABS[(i + j) % LABS.length], out = (i + j) % 4 === 0, val = +(out ? hi * 1.25 : lo + (hi - lo) * (0.3 + ((i * 7 + j * 3) % 5) / 10)).toFixed(test === 'קריאטינין' || test === 'TSH' ? 1 : 0), dt = addDays(today(), -(5 + j * 20 + i)); D.clin.labs.push({ id: 'LB' + (D.clin.labs.length + 1), resident_id: r.id, at: dt, test, value: val, unit, low: lo, high: hi, by: 'U3', created_by: 'U3', created_at: at(dt, '09:00'), updated_by: 'U3', updated_at: at(dt, '09:00') }); } }); // medical-file section records: S.clin.<coll> = [{ id, resident_id, at, by, ...stamp }]
   D.settings = { shifts: { morning: '07:00', evening: '15:00', night: '23:00' }, round_evening_from: '14:00', functional_levels: ['עצמאי', 'תשוש', 'סיעודי', 'תשוש נפש'], functional_levels_off: [], doctors: ['ד״ר לדוגמה א׳', 'ד״ר לדוגמה ב׳', 'ד״ר בדיקה ג׳'] };
   // a few intake (compliance) checks on chronic orders
   D.med_orders.filter(o => o.active && o.kind === 'chronic').filter((_, i) => i % 9 === 0).forEach((o, i) => { const t = ago(60 * (20 + i * 31)); D.clin.intake.push({ id: 'IC' + (i + 1), resident_id: o.resident_id, order_ids: [o.id], at: t, by: i % 2 ? 'U2' : 'U3', result: ['taken', 'taken', 'partial', 'not_taken'][i % 4], note: i % 4 === 2 ? 'נטל/ה חלק מהמנה' : i % 4 === 3 ? 'הכדור נמצא על השולחן' : '', created_by: i % 2 ? 'U2' : 'U3', created_at: t, updated_by: i % 2 ? 'U2' : 'U3', updated_at: t }); });
@@ -837,6 +848,10 @@ const HE = new Intl.Collator('he', { sensitivity: 'base', numeric: true });
 const sortName = (a, b) => HE.compare(a.last_name, b.last_name) || HE.compare(a.first_name, b.first_name) || sortApt(a, b);
 const curBenefit = r => [...(r.benefits || [])].sort((a, b) => a.from.localeCompare(b.from)).at(-1) || null;
 const socialWorkers = () => S.users.filter(u => u.active && (u.role === 'social_worker' || u.social_worker));
+// structured allergies (S.clin.allergies) are the one source of truth; severe first
+const SEV_ORDER = { 'חמורה': 0, 'בינונית': 1, 'קלה': 2 };
+const allergyRecs = r => (S.clin?.allergies || []).filter(x => x.resident_id === r.id && !x.removed).sort((a, b) => (SEV_ORDER[a.severity] ?? 3) - (SEV_ORDER[b.severity] ?? 3));
+const allergyNames = r => allergyRecs(r).map(x => x.allergen);
 const nursingNow = r => r.nursing_level?.at(-1)?.level || '—'; // מצב תפקודי (functional status)
 const functionalLevels = (cur) => S.settings.functional_levels.filter(x => !S.settings.functional_levels_off.includes(x) || x === cur);
 function avColor(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 38% 42%)`; }
@@ -1247,7 +1262,7 @@ function panelResident(p) {
   const rd = currentRound(false), e = rd && rd.entries.find(x => x.resident_id === r.id);
   const notes = S.handover_notes.filter(n => n.resident_id === r.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3);
   return head + `<div class="p-b">
-    <div class="actions">${statusChip(r)} ${moveBadge(r)} ${may('clinical.view') && r.allergies?.length ? `<span class="chip red">אלרגיה: ${esc(r.allergies.join(', '))}</span>` : ''} <span class="chip">גיל ${ageOf(r.birth_date)}</span> <span class="chip">${r.living.lives_alone ? 'גר/ה לבד' : esc(ARR[r.living.arrangement] || 'לא לבד')}</span></div>
+    <div class="actions">${statusChip(r)} ${moveBadge(r)} ${may('clinical.view') && allergyNames(r).length ? `<span class="chip red">⚠ רגישות: ${esc(allergyNames(r).join(', '))}</span>` : ''} <span class="chip">גיל ${ageOf(r.birth_date)}</span> <span class="chip">${r.living.lives_alone ? 'גר/ה לבד' : esc(ARR[r.living.arrangement] || 'לא לבד')}</span></div>
     ${e ? `<div class="p-sec"><h3>${esc(roundName(rd))}</h3>${e.status === 'located' ? `<span class="chip ok">${g(r, 'אותר', 'אותרה')} · ${METHOD[e.method]} · ${fT(e.at)}</span>` : e.status === 'excluded' ? `<span class="chip vio">לא לאיתור: ${esc(e.reason)}</span>` : '<span class="chip blue">טרם אותר</span>'}</div>` : ''}
     <div class="actions"><a class="btn pri" href="#/resident/${r.id}">פתח תיק דייר</a>${r.phone ? `<a class="btn" href="tel:${esc(r.phone.replace(/-/g, ''))}">${ic('phone')} ${esc(r.phone)}</a>` : ''}</div>
     <div class="actions">${may('mov.create') && !m && !isGone(r) ? `<button class="btn sm" data-act="new-move" data-rid="${r.id}">פתח תנועה</button>` : ''}${may('calls.create') ? `<button class="btn sm" data-act="new-call" data-rid="${r.id}">פתח קריאת שירות</button>` : ''}<button class="btn sm" data-act="new-event" data-rid="${r.id}">דווח אירוע חריג</button></div>
@@ -1264,7 +1279,7 @@ function fileTabs(r) {
     { id: 'events', name: 'אירועים' }, { id: 'nursing', name: 'סיעוד ותרופות', perm: 'clinical.view' }].filter(t => !t.perm || may(t.perm));
 }
 // a resident file opened inside a category shows only that category's sections
-const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'contacts', 'movements', 'meds', 'events'] }; // medical grows with each R7 commit, in menu order
+const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'contacts', 'movements', 'diagnoses', 'allergies', 'vitals', 'meds', 'labs', 'events'] }; // medical grows with each R7 commit, in menu order
 const fileCtx = () => UI.route === 'cat' ? { cat: UI.params[0], rid: UI.params[1], tab: UI.params[2] } : { cat: null, rid: UI.params[0], tab: UI.params[1] };
 const fileDefaultTab = ctx => ctx.cat ? CAT_SECTIONS[ctx.cat][0] : 'personal';
 const fileHref = (ctx, rid, tab) => ctx.cat ? `#/cat/${ctx.cat}/${rid}/${tab}` : `#/resident/${rid}/${tab}`;
@@ -1279,7 +1294,7 @@ function viewResidentFile() {
     <div class="fhead">${avatar(r)}
       <div style="min-width:0;flex:1"><h1>${esc(fullName(r))}</h1>
         <div class="meta"><span>דירה <b>${esc(r.apartment)}</b></span><span>קומה ${u.floor} · בניין ${u.building}</span><span>גיל ${ageOf(r.birth_date)}</span><span>קופ״ח ${esc(r.medical_fund)}</span><span class="num">${esc(r.demo_id)}</span>${admissionMeta(r)}</div>
-        <div class="badges">${statusChip(r)} ${moveBadge(r)} ${may('clinical.view') && r.allergies?.length ? `<span class="chip red">⚠ אלרגיה: ${esc(r.allergies.join(', '))}</span>` : ''} <span class="chip">${r.living.lives_alone ? 'גר/ה לבד' : esc(ARR[r.living.arrangement] || '')}</span></div>
+        <div class="badges">${statusChip(r)} ${moveBadge(r)} ${may('clinical.view') && allergyNames(r).length ? `<span class="chip red">⚠ רגישות: ${esc(allergyNames(r).join(', '))}</span>` : ''} <span class="chip">${r.living.lives_alone ? 'גר/ה לבד' : esc(ARR[r.living.arrangement] || '')}</span></div>
       </div>
       <div class="actions no-print">
         ${TAB_EDIT[tab] && may(TAB_EDIT[tab]) && !editing ? `<button class="btn pri" data-act="file-edit" data-tab="${tab}">עריכה</button>` : ''}
@@ -1306,7 +1321,7 @@ function tabPersonal(r, ed) {
       <dt>דירה</dt><dd>${esc(r.apartment)} · ${esc(unitOf(r).label)}</dd><dt>סטטוס</dt><dd>${statusChip(r)} <span class="hint">(משתנה דרך תנועות)</span></dd>
       <dt>מצב תפקודי</dt><dd>${esc(nursingNow(r))}</dd><dt>היסטוריית מצב תפקודי</dt><dd>${r.nursing_level.map(n => `${esc(n.level)} מ-${fD(n.from)}`).join(' ← ')}</dd>
       <dt>סבבים</dt><dd>${pref ? `<span class="chip vio">לא לאיתור</span> ${esc(pref.reason)}${pref.to ? ` (עד ${fD(pref.to)})` : ''}` : 'נבדק/ת בסבבים'}</dd>
-      ${clin ? `<dt>אלרגיות</dt><dd>${r.allergies.length ? `<span class="chip red">${esc(r.allergies.join(', '))}</span>` : 'לא ידוע על אלרגיות'}</dd>` : ''}</dl></div>${audit(r)}`;
+      ${clin ? `<dt>רגישויות</dt><dd>${allergyNames(r).length ? `<span class="chip red">${esc(allergyNames(r).join(', '))}</span>` : 'לא ידוע על רגישויות'}</dd>` : ''}</dl></div>${audit(r)}`;
   return `<form class="form" id="file-form" data-submit="file-save" data-dirty="1">
     ${r._new ? `<div class="frow">${fld('תאריך כניסה לדיור', `<input name="admission_date" type="text" inputmode="numeric" data-date placeholder="dd/mm/yyyy" maxlength="10" value="">`, 'admission_date', 1, 'נרשם כתנועה הראשונה של הדייר/ת')}</div>` : ''}
     <div class="frow">${fld('שם פרטי', `<input name="first_name" type="text" value="${esc(r.first_name)}">`, 'first_name', 1)}${fld('שם משפחה', `<input name="last_name" type="text" value="${esc(r.last_name)}">`, 'last_name', 1)}
@@ -1328,7 +1343,7 @@ function tabPersonal(r, ed) {
     </fieldset>
     <fieldset><legend>סבבים</legend><label class="cb"><input type="checkbox" name="no_check" ${pref ? 'checked' : ''}> לא לאיתור בסבבים (העדפה)</label>
       <div data-when="no_check:on" class="frow">${fld('סיבה', `<input name="pref_reason" type="text" value="${esc(pref?.reason || '')}">`, 'pref_reason', 1)}${fld('עד תאריך (רשות)', `<input name="pref_to" type="text" inputmode="numeric" data-date placeholder="dd/mm/yyyy" maxlength="10" value="${fD((pref?.to || ''))}">`, 'pref_to')}</div></fieldset>
-    ${clin ? fld('אלרגיות', `<input name="allergies" type="text" value="${esc(r.allergies.join(', '))}">`, 'allergies', 0, 'מופרדות בפסיק') : ''}
+    ${clin && !r._new ? `<div class="fld"><span>רגישויות</span><div>${allergyNames(r).length ? `<span class="chip red">${esc(allergyNames(r).join(', '))}</span>` : 'לא ידוע על רגישויות'} · <a href="#/cat/medical/${r.id}/allergies">עדכון בסעיף רגישויות בתיק הרפואי</a></div></div>` : ''}
     <div class="actions"><button class="btn ok">שמירה</button><button type="button" class="btn" data-act="file-cancel">ביטול</button></div>
   </form>`;
 }
@@ -1351,7 +1366,6 @@ function savePersonal(r, form) {
   if (d.unit_id) { r.unit_id = d.unit_id; r.apartment = d.apartment; }
   r.living = d.lives_alone === 'yes' ? { lives_alone: true, arrangement: null } : { lives_alone: false, arrangement: d.arrangement };
   if (d.nursing !== nursingNow(r)) r.nursing_level.push({ level: d.nursing, from: today(), by: me().id });
-  if ('allergies' in d) r.allergies = d.allergies ? d.allergies.split(',').map(s => s.trim()).filter(Boolean) : [];
   const pref = activePref(r.id);
   if (d.no_check) { if (pref) Object.assign(pref, { reason: d.pref_reason, to: d.pref_to || null }); else S.preferences.push({ id: uid('PF'), resident_id: r.id, type: 'no_check', from: today(), to: d.pref_to || null, reason: d.pref_reason, by: me().id, at: nowIso() }); }
   else if (pref) pref.to = addDays(today(), -1);
@@ -1914,7 +1928,7 @@ function viewMeds() {
   const html = Object.entries(groups).map(([uid2, rs]) => `<div class="floor-h">${esc(byId(S.units, uid2).label)}</div><div class="card">${rs.map(r => {
     const m = openMove(r.id), away = !!m;
     const doses = byRes[r.id].flatMap(o => o.times.filter(t => medRoundOf(t).id === f.round).map(t => ({ o, t }))).sort((a, b) => a.t.localeCompare(b.t));
-    return `<div class="mres${away ? ' away' : ''}"><div><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))}</button><br><small class="muted">דירה ${esc(r.apartment)}</small> ${away ? `<span class="chip vio">${esc(MT[m.type].name)} – לא בבית</span>` : ''}${may('clinical.view') && r.allergies.length ? ` <span class="chip red">⚠ ${esc(r.allergies.join(', '))}</span>` : ''}
+    return `<div class="mres${away ? ' away' : ''}"><div><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))}</button><br><small class="muted">דירה ${esc(r.apartment)}</small> ${away ? `<span class="chip vio">${esc(MT[m.type].name)} – לא בבית</span>` : ''}${may('clinical.view') && allergyNames(r).length ? ` <span class="chip red">⚠ ${esc(allergyNames(r).join(', '))}</span>` : ''}
       ${canRun && !away ? `<div><button class="btn sm ghost" data-act="vitals" data-rid="${r.id}">מדדים</button></div>` : ''}</div><div>
       ${doses.map(({ o, t }) => { const a = doseRec(o.id, d, t), key = `${o.id}|${t}`;
         let ctl;
@@ -2084,6 +2098,28 @@ const MED_SECTIONS = {
   personal: { name: 'פרטים אישיים', icon: 'user', render: (r, ed) => tabPersonal(r, ed), actions: (r, ed) => fileEditActions('personal', ed) },
   contacts: { name: 'אנשי קשר', icon: 'phone', render: (r, ed) => tabContacts(r, ed), actions: (r, ed) => fileEditActions('contacts', ed) },
   movements: { name: 'תנועות מטופל', icon: 'move', render: r => tabResMovements(r), actions: r => may('mov.create') && !openMove(r.id) && !isGone(r) ? `<button class="btn pri" data-act="new-move" data-rid="${r.id}">${ic('plus')} פתח תנועה</button>` : '' },
+  diagnoses: { name: 'אבחנות', icon: 'clip', coll: 'diagnoses', prefix: 'DX', write: 'clinical.edit',
+    fields: [{ k: 'diagnosis', label: 'אבחנה', type: 'text', req: 1 }, { k: 'code', label: 'קוד (רשות)', type: 'text' }, { k: 'at', label: 'תאריך אבחון', type: 'date', req: 1 },
+      { k: 'status', label: 'מצב', type: 'select', opts: { active: 'פעילה', past: 'עבר' }, req: 1 }, { k: 'doctor', label: 'רופא/ה מאבחן/ת', type: 'datalist', opts: () => S.settings.doctors }],
+    defaults: () => ({ at: today(), status: 'active' }), validate: d => futureDate(d.at) ? { at: 'לא יכול להיות בעתיד' } : {},
+    filters: [{ k: 'status', label: 'פעילות ועבר', opts: { active: 'פעילות', past: 'עבר' } }], match: (x, f) => !f.status || x.status === f.status,
+    cols: [{ label: 'אבחנה', td: x => `<b>${esc(x.diagnosis)}</b>${x.code ? ` <small class="muted num">${esc(x.code)}</small>` : ''}` }, { label: 'תאריך אבחון', td: x => `<span class="num">${fD(x.at)}</span>` },
+      { label: 'מצב', td: x => `<span class="chip ${x.status === 'active' ? 'red' : ''}">${x.status === 'active' ? 'פעילה' : 'עבר'}</span>` }, { label: 'רופא/ה', td: x => esc(x.doctor || '—') }] },
+  allergies: { name: 'רגישויות', icon: 'shield', coll: 'allergies', prefix: 'AL', write: 'clinical.edit', removable: true,
+    fields: [{ k: 'allergen', label: 'חומר / גורם', type: 'text', req: 1 }, { k: 'type', label: 'סוג', type: 'select', opts: ['תרופה', 'מזון', 'אחר'], req: 1 },
+      { k: 'reaction', label: 'תגובה', type: 'text' }, { k: 'severity', label: 'חומרה', type: 'select', opts: ['קלה', 'בינונית', 'חמורה'], req: 1 }, { k: 'at', label: 'תאריך רישום', type: 'date', req: 1 }],
+    defaults: () => ({ at: today() }), validate: d => futureDate(d.at) ? { at: 'לא יכול להיות בעתיד' } : {}, sort: 'severity_rank',
+    cols: [{ label: 'חומר / גורם', td: x => `<b>${esc(x.allergen)}</b>` }, { label: 'סוג', td: x => esc(x.type) }, { label: 'תגובה', td: x => esc(x.reaction || '—') },
+      { label: 'חומרה', td: x => `<span class="chip ${x.severity === 'חמורה' ? 'red' : x.severity === 'בינונית' ? 'warn' : 'blue'}">${esc(x.severity)}</span>` }, { label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }] },
+  vitals: { name: 'מדדים', icon: 'activity', render: r => vitalsSection(r), actions: r => may('clinical.vitals') ? `<button class="btn pri" data-act="vitals" data-rid="${r.id}">${ic('plus')} הזנת מדדים</button>` : '<span class="chip">לקריאה בלבד</span>' },
+  labs: { name: 'ערכי בדיקות מעבדה', icon: 'flask', coll: 'labs', prefix: 'LB', write: 'clinical.edit',
+    fields: [{ k: 'test', label: 'בדיקה', type: 'datalist', opts: () => [...new Set(S.clin.labs.map(x => x.test))], req: 1 }, { k: 'value', label: 'ערך', type: 'number', req: 1 }, { k: 'unit', label: 'יחידה', type: 'text' },
+      { k: 'low', label: 'טווח תקין – מ-', type: 'number' }, { k: 'high', label: 'טווח תקין – עד', type: 'number' }, { k: 'at', label: 'תאריך', type: 'date', req: 1 }],
+    defaults: () => ({ at: today() }), validate: d => { const e = {}; if (futureDate(d.at)) e.at = 'לא יכול להיות בעתיד'; if (d.low !== '' && d.high !== '' && +d.low > +d.high) e.high = 'הגבול העליון קטן מהתחתון'; return e; },
+    filters: [{ k: 'test', label: 'כל הבדיקות', opts: r => Object.fromEntries([...new Set(clinOf('labs', r.id).map(x => x.test))].map(t => [t, t])) }], match: (x, f) => !f.test || x.test === f.test,
+    cols: [{ label: 'בדיקה', td: x => `<b>${esc(x.test)}</b>` }, { label: 'ערך', td: x => labOut(x) ? `<b class="num" style="color:var(--danger)">${esc(x.value)} ⚠</b>` : `<span class="num">${esc(x.value)}</span>` },
+      { label: 'יחידה', td: x => esc(x.unit || '') }, { label: 'טווח תקין', td: x => `<span class="num">${x.low !== '' && x.low != null ? esc(x.low) : '…'}–${x.high !== '' && x.high != null ? esc(x.high) : '…'}</span>` }, { label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }],
+    rowCls: x => labOut(x) ? 'overdue' : '' },
   meds: { name: 'תרופות', icon: 'pill', render: r => medsSection(r), actions: r => medsActions(r) },
   events: { name: 'אירוע חריג', icon: 'alert', render: r => eventTable(visibleEvents().filter(e => e.resident_ids.includes(r.id)).sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))) + (!may('events.viewAll') ? '<p class="hint">מוצגים רק אירועים שדיווחת בעצמך.</p>' : ''),
     actions: r => `<button class="btn pri" data-act="new-event" data-rid="${r.id}">${ic('plus')} דווח אירוע חריג</button>` },
@@ -2167,6 +2203,14 @@ function panelIntake(p) {
     ${fld('הערה', `<textarea name="note"></textarea>`, 'note', 0, 'חובה כשהתוצאה אינה "נטל/ה"')}
     <div class="actions"><button class="btn pri">שמירת בדיקה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
 }
+const labOut = x => (x.low !== '' && x.low != null && +x.value < +x.low) || (x.high !== '' && x.high != null && +x.value > +x.high);
+function vitalsSection(r) {
+  const f = F('med_vitals', { type: '' });
+  const list = S.vitals.filter(v => v.resident_id === r.id && (!f.type || v.type === f.type)).sort((a, b) => b.at.localeCompare(a.at));
+  return `<div class="filters"><select data-ch="f" data-view="med_vitals" data-k="type" aria-label="סוג מדד">${opt('', 'כל המדדים', f.type)}${Object.entries(VITALS).map(([k, v]) => opt(k, v.name, f.type)).join('')}</select></div>
+  ${list.length ? `<div class="tbl"><table><thead><tr><th>זמן</th><th>מדד</th><th>ערך</th><th>נמדד ע״י</th></tr></thead><tbody>${list.map(v => `<tr><td class="n">${fDT(v.at)}</td><td>${VITALS[v.type].name} <small class="muted">${VITALS[v.type].unit}</small></td>
+    <td class="num">${VITALS[v.type].ok(v.value) ? esc(v.value) : `<b style="color:var(--danger)">${esc(v.value)} ⚠</b>`}</td><td>${esc(uname(v.by))}</td></tr>`).join('')}</tbody></table></div>` : empty('לא נמדדו מדדים', '')}`;
+}
 function fileEditActions(tab, editing) {
   if (!TAB_EDIT[tab] || !may(TAB_EDIT[tab])) return '';
   return editing ? `<button class="btn ok" data-act="file-save">שמירה</button><button class="btn" data-act="file-cancel">ביטול</button>` : `<button class="btn pri" data-act="file-edit" data-tab="${tab}">עריכה</button>`;
@@ -2180,7 +2224,7 @@ function medHeader(r) {
         ${kv('קופ״ח', esc(r.medical_fund))}${kv('גיל', ageOf(r.birth_date))}${kv('גורם מתקצב', esc(r.funding_source || '—'))}${kv('טלפון', r.phone ? `<a class="num" href="tel:${esc(r.phone.replace(/-/g, ''))}">${esc(r.phone)}</a>` : '—')}</dl>
       <div class="badges" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${medAllergyBadge(r)}</div></div></div>`;
 }
-function medAllergyBadge(r) { return r.allergies?.length ? `<span class="chip red">⚠ רגישות: ${esc(r.allergies.join(', '))}</span>` : ''; }
+function medAllergyBadge(r) { return allergyNames(r).length ? `<span class="chip red">⚠ רגישות: ${esc(allergyNames(r).join(', '))}</span>` : ''; }
 function viewMedicalFile() {
   const ctx = fileCtx(), r = res(ctx.rid); if (!r) return empty('הדייר לא נמצא', 'ייתכן שהקישור ישן או שהנתונים אופסו.');
   const secs = CAT_SECTIONS.medical.filter(id => MED_SECTIONS[id]), sec = secs.includes(ctx.tab) ? ctx.tab : secs[0], def = MED_SECTIONS[sec];
@@ -2198,14 +2242,15 @@ function viewMedicalFile() {
 function medList(r, sec) {
   const def = MED_SECTIONS[sec], fdef = {}; for (const x of def.filters || []) fdef[x.k] = x.def ?? '';
   const f = F('med_' + sec, fdef);
-  const list = clinOf(def.coll, r.id).filter(x => !def.match || def.match(x, f)).sort((a, b) => String(b[def.sort || 'at']).localeCompare(String(a[def.sort || 'at'])));
+  const sk = x => def.sort === 'severity_rank' ? 9 - (SEV_ORDER[x.severity] ?? 3) + '|' + x.at : String(x[def.sort || 'at']);
+  const list = clinOf(def.coll, r.id).filter(x => !x.removed && (!def.match || def.match(x, f))).sort((a, b) => sk(b).localeCompare(sk(a)));
   const canW = may(def.write);
   const filters = (def.filters || []).map(x => x.k === 'q' ? `<div class="q">${ic('search')}<input id="medf-${sec}" type="search" placeholder="${esc(x.label)}" value="${esc(f.q)}" data-in="f" data-view="med_${sec}" data-k="q" aria-label="${esc(x.label)}"></div>`
-    : `<select data-ch="f" data-view="med_${sec}" data-k="${x.k}" aria-label="${esc(x.label)}">${opt('', x.label, f[x.k])}${Object.entries(x.opts).map(([k, v]) => opt(k, v, f[x.k])).join('')}</select>`).join('');
+    : `<select data-ch="f" data-view="med_${sec}" data-k="${x.k}" aria-label="${esc(x.label)}">${opt('', x.label, f[x.k])}${Object.entries(typeof x.opts === 'function' ? x.opts(r) : x.opts).map(([k, v]) => opt(k, v, f[x.k])).join('')}</select>`).join('');
   return `${filters ? `<div class="filters">${filters}</div>` : ''}
   ${list.length ? `<div class="tbl"><table><thead><tr>${def.cols.map(c => `<th>${c.label}</th>`).join('')}<th>נרשם ע״י</th>${canW ? '<th></th>' : ''}</tr></thead><tbody>
   ${list.map(x => `<tr class="${def.rowCls ? def.rowCls(x) : ''}">${def.cols.map(c => `<td>${c.td(x)}</td>`).join('')}<td><small>${esc(uname(x.by))}<br><span class="muted num">${fDT(x.created_at)}</span>${x.updated_at && x.updated_at !== x.created_at ? `<br><span class="muted">עודכן ${esc(uname(x.updated_by))} ${fDT(x.updated_at)}</span>` : ''}</small></td>
-    ${canW ? `<td><button class="btn sm" data-act="medrec-edit" data-sec="${sec}" data-id="${x.id}">עריכה</button></td>` : ''}</tr>`).join('')}</tbody></table></div>` : empty('אין רשומות להצגה', canW ? 'לחצו "הוספה" כדי להוסיף.' : '')}`;
+    ${canW ? `<td style="white-space:nowrap"><button class="btn sm" data-act="medrec-edit" data-sec="${sec}" data-id="${x.id}">עריכה</button>${def.removable ? (UI.confirm === 'medrm:' + x.id ? ` <span class="confirm">להסיר? <button class="btn sm danger" data-act="medrec-del" data-sec="${sec}" data-id="${x.id}">הסרה</button><button class="btn sm" data-act="confirm-cancel">ביטול</button></span>` : ` <button class="btn sm" data-act="confirm" data-key="medrm:${x.id}">הסרה</button>`) : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : empty('אין רשומות להצגה', canW ? 'לחצו "הוספה" כדי להוסיף.' : '')}`;
 }
 function medField(fd, v) {
   const name = fd.k, o = typeof fd.opts === 'function' ? fd.opts() : fd.opts;
@@ -2383,7 +2428,7 @@ const ACT = {
     if (!may('res.create')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
     const n = 1 + Math.max(0, ...S.residents.map(r => +r.demo_id.split('-')[1])), u = S.units[0];
     const r = stamp({ id: 'R' + String(n).padStart(3, '0'), demo_id: 'DEMO-' + String(n).padStart(4, '0'), first_name: '', last_name: '', gender: 'F', birth_date: '', apartment: u.apartments[0], unit_id: u.id, phone: '', email: '', languages: ['עברית'], religion: '', status: 'active', medical_fund: FUNDS[0],
-      treatment_start: '', funding_source: 'פרטי', living: { lives_alone: true, arrangement: null }, nursing_level: [{ level: functionalLevels()[0] || 'עצמאי', from: today(), by: me().id }], responsible_social_worker_id: socialWorkers()[0]?.id || null, contacts: [], benefits: [], allergies: [], social_notes: [], _new: true }, true);
+      treatment_start: '', funding_source: 'פרטי', living: { lives_alone: true, arrangement: null }, nursing_level: [{ level: functionalLevels()[0] || 'עצמאי', from: today(), by: me().id }], responsible_social_worker_id: socialWorkers()[0]?.id || null, contacts: [], benefits: [], social_notes: [], _new: true }, true);
     if (prefill.first_name) Object.assign(r, { first_name: prefill.first_name, last_name: prefill.last_name, phone: prefill.phone || '', email: prefill.email || '', gender: prefill.gender || r.gender, _prospect: prefill.prospect_id || undefined });
     S.residents.push(r); UI.edit = { rid: r.id, tab: 'personal' }; go(`#/resident/${r.id}/personal`);
   },
@@ -2420,6 +2465,7 @@ const ACT = {
   'medorder-update': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); const sel = medF().sel; if (sel.length > 1) return toast('לעדכון בחרו הוראה אחת בלבד'); openPanel(sel.length ? { type: 'medorder', id: sel[0] } : { type: 'medhandling', rid: el.dataset.rid }); },
   'intake-open': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); const sel = medF().sel.filter(id => byId(S.med_orders, id)?.active); if (!sel.length) return toast('בחרו לפחות הוראה פעילה אחת לבדיקת נטילה'); openPanel({ type: 'intake', rid: el.dataset.rid, ids: sel }); },
   'medrec-new': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, rid: el.dataset.rid }); },
+  'medrec-del': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !def.removable || !may(def.write)) return toast(NO_PERM_ACT); const x = S.clin[def.coll].find(y => y.id === el.dataset.id); if (!x) return; x.removed = { at: nowIso(), by: me().id }; stamp(x); UI.confirm = null; refresh(); toast('הרשומה הוסרה (נשמרת בהיסטוריה)'); },
   'medrec-edit': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, id: el.dataset.id }); },
   'new-prospect': () => { if (!may('prospects.create')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); openPanel({ type: 'prospect' }); },
   'open-prospect': el => openPanel({ type: 'prospect', id: el.dataset.id }),
@@ -2554,7 +2600,7 @@ const SUB = {
   vitals: form => {
     if (!mayVitals()) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
     const d = readForm(form), r = res(form.dataset.rid), e = {}; const t = nowIso(); let n = 0;
-    if (d.bp && !/^\d{2,3}\/\d{2,3}$/.test(d.bp)) e.bp = 'בפורמט 120/80'; for (const k of ['pulse', 'temp', 'sat', 'weight']) if (d[k] && isNaN(+d[k])) e[k] = 'מספר בלבד';
+    if (d.bp && !/^\d{2,3}\/\d{2,3}$/.test(d.bp)) e.bp = 'בפורמט 120/80'; for (const k of ['pulse', 'temp', 'sat', 'glucose', 'weight']) if (d[k] && isNaN(+d[k])) e[k] = 'מספר בלבד';
     if (!Object.keys(e).length && !Object.keys(VITALS).some(k => d[k])) e.bp = 'הזינו לפחות מדד אחד';
     if (!showErrors(form, e)) return;
     for (const k of Object.keys(VITALS)) if (d[k]) { S.vitals.push({ id: uid('V'), resident_id: r.id, type: k, value: d[k], at: t, by: me().id }); n++; }
