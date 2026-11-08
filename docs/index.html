@@ -24,6 +24,8 @@
   --away:#6a4c9c; --away-soft:#ece6f6;
   --danger:#b4232c; --danger-soft:#fbe3e4;
   --banner:#5b3a00; --banner-bg:#ffe9a8; --on-solid:#ffffff;
+  --cat-admin:#1f5fb4; --cat-admin-soft:#e2ecf9; --cat-medical:#b4232c; --cat-medical-soft:#fbe3e4;
+  --cat-social:#1d7a4c; --cat-social-soft:#dcf1e5; --cat-marketing:#a94f00; --cat-marketing-soft:#fdebd9;
   --shadow:0 1px 2px rgba(16,36,48,.06),0 6px 20px rgba(16,36,48,.10);
   --font:"Assistant","Segoe UI","Arial Hebrew",Arial,sans-serif;
   --r:10px; --nav-w:228px; --panel-w:460px;
@@ -35,6 +37,8 @@
   --pending:#8db6e2; --pending-soft:#1b2d42; --warn:#f0a463; --warn-soft:#3a2516;
   --ok:#6fd09d; --ok-soft:#143425; --away:#b9a2e6; --away-soft:#2a2340; --danger:#f2858b; --danger-soft:#3d1b1f;
   --banner:#ffe3a0; --banner-bg:#4a3608; --on-solid:#0b1a14;
+  --cat-admin:#8db6ee; --cat-admin-soft:#1a2c45; --cat-medical:#f2858b; --cat-medical-soft:#3d1b1f;
+  --cat-social:#6fd09d; --cat-social-soft:#143425; --cat-marketing:#f5a560; --cat-marketing-soft:#3a2516;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.35); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0f161c; --surface:#16212a; --surface-2:#1c2a35; --line:#2a3a47; --line-2:#3a4c5a; --fg:#e6edf2; --muted:#9aaab8;
@@ -42,6 +46,8 @@
   --pending:#8db6e2; --pending-soft:#1b2d42; --warn:#f0a463; --warn-soft:#3a2516;
   --ok:#6fd09d; --ok-soft:#143425; --away:#b9a2e6; --away-soft:#2a2340; --danger:#f2858b; --danger-soft:#3d1b1f;
   --banner:#ffe3a0; --banner-bg:#4a3608; --on-solid:#0b1a14;
+  --cat-admin:#8db6ee; --cat-admin-soft:#1a2c45; --cat-medical:#f2858b; --cat-medical-soft:#3d1b1f;
+  --cat-social:#6fd09d; --cat-social-soft:#143425; --cat-marketing:#f5a560; --cat-marketing-soft:#3a2516;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.35); color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -252,6 +258,23 @@ details.more[open]{padding-bottom:12px}
 .swbox{display:flex;align-items:center;gap:14px;background:var(--accent-soft);border-radius:12px;padding:12px 16px;margin-bottom:14px}
 .swbox .lbl{font-size:13.5px;font-weight:800;color:var(--accent)}
 .swbox .nm{font-size:22px;font-weight:800}
+
+/* ---------- home tiles / categories ---------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:14px}
+.tile{display:flex;flex-direction:column;gap:10px;min-height:170px;padding:18px 20px;border-radius:16px;background:var(--surface);border:1px solid var(--line);border-top:8px solid var(--c);text-decoration:none;color:var(--fg);box-shadow:var(--shadow)}
+.tile:hover{background:var(--cs)}
+.tile .ti{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:var(--cs);color:var(--c)}
+.tile .ti svg{width:28px;height:28px}
+.tile b{font-size:26px;font-weight:800;color:var(--c)}
+.tile span.d{color:var(--muted);font-size:15px}
+.cat-admin{--c:var(--cat-admin);--cs:var(--cat-admin-soft)}
+.cat-medical{--c:var(--cat-medical);--cs:var(--cat-medical-soft)}
+.cat-social{--c:var(--cat-social);--cs:var(--cat-social-soft)}
+.cat-marketing{--c:var(--cat-marketing);--cs:var(--cat-marketing-soft)}
+.cat-strip{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;background:var(--cs);border-inline-start:8px solid var(--c);border-radius:12px;padding:10px 16px;margin-bottom:12px}
+.cat-strip h1{margin:0;font-size:24px;font-weight:800;color:var(--c)}
+.cat-strip .sp{flex:1}
+.cat-strip a.back{font-weight:700;color:var(--c)}
 
 /* ---------- feeds ---------- */
 .feed{display:flex;flex-direction:column;gap:8px}
@@ -715,6 +738,7 @@ const PERMS = {
   'reports.full': ['shift_manager', 'nurse', 'social_worker', 'manager', 'admin'],
   'settings.view': ['manager', 'admin'],
   'settings.all': ['admin'],
+  'home.view': ['reception', 'shift_manager', 'nurse', 'social_worker', 'manager', 'admin'],
 };
 function can(role, action) { return (PERMS[action] || []).includes(role); }
 const may = action => !!me() && can(me().role, action);
@@ -776,11 +800,19 @@ const NAV = [
   { id: 'meds', name: 'תרופות/סיעוד', icon: 'pill', perm: 'meds.view' }, { id: 'reports', name: 'דוחות', icon: 'chart', perm: 'reports.view' },
   { id: 'settings', name: 'הגדרות', icon: 'gear', perm: 'settings.view' }];
 const ROUTE_PERM = { resident: 'res.view' };
+// home page categories (#/home tiles → #/cat/<id>); perm is a function so marketing can check prospects.view
+const CATS = [
+  { id: 'admin', name: 'מנהלה', icon: 'note', perm: () => may('res.view'), desc: 'פרטים אישיים · אנשי קשר · יומן קשר · תנועות · סבב · קריאות שירות' },
+  { id: 'medical', name: 'רפואי', icon: 'heart', perm: () => may('clinical.view'), desc: 'רשימת דיירים ותיק רפואי' },
+  { id: 'social', name: 'סוציאלי', icon: 'users', perm: () => may('social.view'), desc: 'תיק סוציאלי · קצבאות' },
+  { id: 'marketing', name: 'שיווק', icon: 'megaphone', perm: () => may('prospects.view'), desc: 'ניהול מתעניינים' }];
+const catOf = id => CATS.find(c => c.id === id);
 function parseHash() {
   const h = location.hash.replace(/^#\/?/, ''); const [path, qs = ''] = h.split('?'); const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
   UI.route = parts[0] || ''; UI.params = parts.slice(1); UI.query = Object.fromEntries(new URLSearchParams(qs));
 }
-const homeRoute = () => (NAV.find(n => may(n.perm)) || NAV[0]).id;
+// maintenance has no home page and lands on service calls (product decision R2)
+const homeRoute = () => may('home.view') ? 'home' : me()?.role === 'maintenance' ? 'calls' : (NAV.find(n => may(n.perm)) || NAV[0]).id;
 function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 const ICONS = {
   check: '<path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>', users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.6c1.8.8 3 2.6 3.5 5.4"/>',
@@ -790,6 +822,8 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', phone: '<path d="M5 3.5h3.5l1.5 4.5-2.3 1.5a11 11 0 0 0 6.8 6.8l1.5-2.3 4.5 1.5V19a2 2 0 0 1-2 2A16.5 16.5 0 0 1 3 5.5a2 2 0 0 1 2-2z"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>', plus: '<path d="M12 5v14M5 12h14"/>', print: '<path d="M7 9V3.5h10V9M7 17H4.5V10h15v7H17"/><rect x="7" y="14" width="10" height="6.5"/>',
   home: '<path d="M4 11 12 4l8 7v9H4z"/><path d="M10 20v-5h4v5"/>', chevL: '<path d="m14 6-6 6 6 6"/>', chevR: '<path d="m10 6 6 6-6 6"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>',
+  heart: '<path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z"/><path d="M12 10v5M9.5 12.5h5"/>',
+  megaphone: '<path d="M4 10v4h3l7 4V6L7 10z"/><path d="M17.5 9a4 4 0 0 1 0 6M7 14l1.5 5"/>',
   logo: '<path d="M4 20V9.5L12 4l8 5.5V20"/><path d="M9 20v-6h6v6"/><path d="M12 8.2v2.6M10.7 9.5h2.6"/>', download: '<path d="M12 4v11M7 10.5l5 5 5-5M4.5 20h15"/>', upload: '<path d="M12 16V5M7 9.5l5-5 5 5M4.5 20h15"/>'};
 const ic = (n, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`;
 
@@ -809,13 +843,15 @@ function measureTop() { const s = $('.demo-strip')?.offsetHeight || 0, t = $('.t
 window.addEventListener('resize', () => measureTop());
 function allowedRoute() {
   const r = UI.route; if (r === 'resident') return may('res.view');
+  if (r === 'home') return may('home.view');
+  if (r === 'cat') { const c = catOf(UI.params[0]); return !!c && c.perm(); }
   const n = NAV.find(x => x.id === r); return n && may(n.perm);
 }
 function renderMain() {
   keepFocus(() => {
     if (!allowedRoute()) { const h = homeRoute(); if (UI.route && UI.route !== h) toast('אין הרשאה למסך הזה בתפקיד הנוכחי'); history.replaceState(null, '', '#/' + h); parseHash(); }
     const V = VIEWS[UI.route]; $('#main').innerHTML = V ? V() : '';
-    const title = UI.route === 'resident' ? 'תיק דייר' : NAV.find(n => n.id === UI.route)?.name; document.title = `${title} – סבב דיירים – הוד ירושלים (הדגמה)`;
+    const title = UI.route === 'resident' ? 'תיק דייר' : UI.route === 'home' ? 'ראשי' : UI.route === 'cat' ? catOf(UI.params[0])?.name : NAV.find(n => n.id === UI.route)?.name; document.title = `${title} – סבב דיירים – הוד ירושלים (הדגמה)`;
     applyWhenAll();
   });
 }
@@ -919,7 +955,7 @@ function navBadge(id) {
 }
 function renderNav() {
   const cur = UI.route === 'resident' ? 'residents' : UI.route;
-  $('#nav').innerHTML = NAV.filter(n => may(n.perm)).map((n, i) => `<a href="#/${n.id}" ${cur === n.id ? 'aria-current="page"' : ''} title="Alt+${i + 1}">${ic(n.icon)}<span>${n.name}</span>${navBadge(n.id)}</a>`).join('')
+  $('#nav').innerHTML = (may('home.view') ? `<a href="#/home" ${cur === 'home' ? 'aria-current="page"' : ''}>${ic('home')}<span>ראשי</span></a>` : '') + NAV.filter(n => may(n.perm)).map((n, i) => `<a href="#/${n.id}" ${cur === n.id ? 'aria-current="page"' : ''} title="Alt+${i + 1}">${ic(n.icon)}<span>${n.name}</span>${navBadge(n.id)}</a>`).join('')
     + `<div class="foot"><span class="kbdhelp"><kbd>/</kbd> חיפוש · <kbd>Esc</kbd> סגירה · <kbd>Alt</kbd>+<kbd>1-9</kbd> מסכים</span><button data-act="theme">החלפת מצב תצוגה (בהיר/כהה)</button></div>`;
 }
 function tick() { const c = $('#clock'); if (c) { const d = new Date(); c.textContent = `${dow(today())}, ${fD(d)} · ${fT(d)}`; } }
@@ -1861,7 +1897,22 @@ function viewSettings() {
   return out;
 }
 
-const VIEWS = { round: viewRound, residents: viewResidents, resident: viewResidentFile, movements: viewMovements, handover: viewHandover, calls: viewCalls, events: viewEvents, meds: viewMeds, reports: viewReports, settings: viewSettings };
+/* ================================================================
+   Home (ראשי) and categories (#/cat/<id>)
+   ================================================================ */
+function viewHome() {
+  const cats = CATS.filter(c => c.perm());
+  return `<div class="ph"><h1>ראשי</h1><span class="sub">בחרו תחום</span></div>
+  <div class="tiles">${cats.map(c => `<a class="tile cat-${c.id}" href="#/cat/${c.id}"><span class="ti">${ic(c.icon)}</span><b>${c.name}</b><span class="d">${esc(c.desc)}</span></a>`).join('')}</div>`;
+}
+function catStrip(c, extra = '') { return `<div class="cat-strip cat-${c.id}"><h1>${c.name}</h1>${extra}</div>`; }
+function viewCat() {
+  const c = catOf(UI.params[0]); if (!c) return '';
+  const quick = c.id === 'admin' ? [['round', 'סבב', 'rounds.run'], ['calls', 'קריאות שירות', 'calls.view'], ['movements', 'תנועות', 'mov.view']].filter(q => may(q[2])).map(([id, name]) => `<a class="btn sm" href="#/${id}">${name}</a>`).join('') : '';
+  return catStrip(c, `<span class="sp"></span>${quick}`);
+}
+
+const VIEWS = { home: viewHome, cat: viewCat, round: viewRound, residents: viewResidents, resident: viewResidentFile, movements: viewMovements, handover: viewHandover, calls: viewCalls, events: viewEvents, meds: viewMeds, reports: viewReports, settings: viewSettings };
 const PANELS = { res: panelResident, move: panelMove, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
 
 /* ================================================================
