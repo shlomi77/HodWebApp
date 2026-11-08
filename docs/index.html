@@ -1433,8 +1433,8 @@ function savePersonal(r, form) {
 function tabContacts(r, ed) {
   if (!ed) return r.contacts.length ? `<div class="tbl"><table><thead><tr><th>שם</th><th>קרבה</th><th>טלפון</th><th>דוא״ל</th><th>אפוטרופוס</th><th>ייפוי כוח</th><th>איש קשר ראשי</th></tr></thead><tbody>${r.contacts.map(c => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.relation)}</td><td class="n"><a href="tel:${esc(c.phone.replace(/-/g, ''))}">${esc(c.phone)}</a></td><td>${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—'}</td><td>${c.guardian ? '✓' : ''}</td><td>${c.is_proxy ? '✓' : ''}</td><td>${c.notify_first ? '<span class="chip acc">איש קשר ראשי</span>' : ''}</td></tr>`).join('')}</tbody></table></div>${audit(r)}` : empty('אין אנשי קשר', may('res.edit') ? 'לחצו "עריכה" כדי להוסיף.' : '');
   const row = (c = {}, i) => `<div class="contact-row" data-crow>
-    <label class="fld"><span>שם</span><input type="text" data-c="name" value="${esc(c.name || '')}"></label><label class="fld"><span>קרבה</span><input type="text" data-c="relation" value="${esc(c.relation || '')}"></label>
-    <label class="fld req"><span>טלפון</span><input type="tel" data-c="phone" value="${esc(c.phone || '')}"><span class="err"></span></label>
+    <label class="fld req"><span>שם</span><input type="text" data-c="name" value="${esc(c.name || '')}"><span class="err" data-e="name"></span></label><label class="fld"><span>קרבה</span><input type="text" data-c="relation" value="${esc(c.relation || '')}"></label>
+    <label class="fld req"><span>טלפון</span><input type="tel" data-c="phone" value="${esc(c.phone || '')}"><span class="err" data-e="phone"></span></label>
     <label class="fld"><span>דוא״ל</span><input type="text" inputmode="email" data-c="email" value="${esc(c.email || '')}"><span class="err" data-e="email"></span></label>
     <label class="cb"><input type="checkbox" data-c="guardian" ${c.guardian ? 'checked' : ''}> אפוטרופוס</label><label class="cb"><input type="checkbox" data-c="is_proxy" ${c.is_proxy ? 'checked' : ''}> ייפוי כוח</label><label class="cb"><input type="checkbox" data-c="notify_first" ${c.notify_first ? 'checked' : ''}> איש קשר ראשי</label>
     <button type="button" class="btn sm" data-act="contact-del" aria-label="הסרת איש קשר">הסר</button></div>`;
@@ -1446,9 +1446,12 @@ function saveContacts(r, form) {
   const rows = $$('[data-crow]', form); const out = []; let ok = true;
   for (const row of rows) {
     const get = k => row.querySelector(`[data-c="${k}"]`); const c = { name: get('name').value.trim(), relation: get('relation').value.trim(), phone: get('phone').value.trim(), email: get('email').value.trim(), guardian: get('guardian').checked, is_proxy: get('is_proxy').checked, notify_first: get('notify_first').checked };
-    if (!c.name && !c.phone) continue; const err = row.querySelector('.err'), eerr = row.querySelector('[data-e="email"]'); get('phone').classList.remove('inv'); get('email').classList.remove('inv'); err.textContent = ''; eerr.textContent = '';
-    if (!c.phone || !validPhone(c.phone)) { ok = false; err.textContent = c.phone ? '9–10 ספרות שמתחילות ב-0' : 'שדה חובה'; get('phone').classList.add('inv'); }
-    if (c.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) { ok = false; eerr.textContent = 'כתובת דוא״ל לא תקינה'; get('email').classList.add('inv'); }
+    const er = k => row.querySelector(`[data-e="${k}"]`);
+    for (const k of ['name', 'phone', 'email']) { get(k).classList.remove('inv'); er(k).textContent = ''; }
+    const bad = (k, msg) => { ok = false; er(k).textContent = msg; get(k).classList.add('inv'); };
+    if (!c.name) bad('name', 'שדה חובה');
+    if (!c.phone) bad('phone', 'שדה חובה'); else if (!validPhone(c.phone)) bad('phone', '9–10 ספרות שמתחילות ב-0');
+    if (c.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c.email)) bad('email', 'כתובת דוא״ל לא תקינה');
     out.push(c);
   }
   if (!ok) { form.querySelector('.inv')?.focus(); return false; }
