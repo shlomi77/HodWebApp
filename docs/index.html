@@ -777,6 +777,12 @@ function seed() {
   // double-check drugs (R11) scheduled today for three residents who are at home
   for (const [rid, reg, times, dose] of [['R003', 'DEMO-013', ['08:00', '20:00'], '10 יחידות'], ['R011', 'DEMO-014', ['20:00'], '1 טבליה'], ['R020', 'DEMO-015', ['08:00'], '0.4 מ״ל']])
     mkOrder(byId(D.residents, rid), catReg(reg), { times, dose, start: addDays(today(), -60) });
+  // controlled drugs (R12): two scheduled, one PRN; one facility-wide cabinet with a seed balance (D13)
+  mkOrder(byId(D.residents, 'R025'), catReg('DEMO-016'), { times: ['08:00', '20:00'], dose: '1 טבליה', start: addDays(today(), -45) });
+  mkOrder(byId(D.residents, 'R037'), catReg('DEMO-017'), { times: ['08:00'], dose: 'מדבקה אחת', start: addDays(today(), -20) });
+  const oFic = mkOrder(byId(D.residents, 'R041'), catReg('DEMO-018'), { kind: 'acute', prn: true, prn_indication: 'חרדה או אי שקט', prn_min_interval_h: 8, prn_max_per_24h: 2, start: addDays(today(), -10) });
+  { const t = ago(60 * 10); D.med_admin.push({ id: uid('MA'), order_id: oFic.id, prn: true, date: dkey(t), time: fT(t), status: 'given', indication_text: 'אי שקט בערב', at: t, by: 'U3' }); }
+  D.controlled_stock = { 'DEMO-016': 56, 'DEMO-017': 10, 'DEMO-018': 28 }; D.controlled_stock_at = ago(60 * 24 * 3); D.controlled_shift_counts = [];
   // PRN orders (R9) with all three rules, and a few gives today / yesterday so the interval and 24 h max blocks can be demoed
   const PRN = [['R002', 'DEMO-010', 'כאב או חום מעל 38', 6, 4, [60]], ['R004', 'DEMO-023', 'כאבי מפרקים', 8, 3, [60 * 20]], ['R008', 'DEMO-026', 'קשיי הירדמות', 24, 1, [60 * 22]],
     ['R012', 'DEMO-010', 'כאב בברך', 6, 4, [60 * 9, 60 * 3]], ['R016', 'DEMO-029', 'כאב בחזה', 0.25, 3, []], ['R021', 'DEMO-033', 'בחילה', 8, 3, [60 * 30]],
@@ -898,13 +904,23 @@ function seedActivity() {
   }
 }
 
+/* two prior signed controlled-drug counts (R12), one with a discrepancy; run after the seeded doses */
+function seedControlledCounts() {
+  const ccSeed = (minAgo, outBy, inBy, off = {}) => {
+    const ms = Date.now() - minAgo * 60000, w = workShiftAt(new Date(ms)), out = iso(new Date(ms - 6 * 60000));
+    const rows = controlledDrugs().map(c => { const exp = ccExpected(c.reg_num, ms), cnt = exp + (off[c.reg_num] || 0); return { drug_reg_num: c.reg_num, expected_qty: exp, counted_qty: cnt, discrepancy: cnt !== exp }; });
+    S.controlled_shift_counts.push({ id: 'CC' + (S.controlled_shift_counts.length + 1), at: out, shift: w.shift, shift_date: w.date, unit: CC_UNIT, rows, outgoing_by: outBy, outgoing_at: out, incoming_by: inBy, incoming_at: iso(new Date(ms)) });
+  };
+  ccSeed(60 * 40, 'U3', 'U2'); ccSeed(60 * 16, 'U2', 'U3', { 'DEMO-018': -1 });
+}
+
 /* ---------- storage ---------- */
 let S = null;
 function load() {
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const d = JSON.parse(raw); if (d && d.version === SCHEMA_VERSION) { S = d; return; } } } catch (e) { /* fall through to reseed */ }
   reseed();
 }
-function reseed() { S = seed(); seedActivity(); save(); }
+function reseed() { S = seed(); seedActivity(); seedControlledCounts(); save(); }
 function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch (e) { toast('שמירה נכשלה: ' + e.message); } }
 function stamp(o, isNew) { const u = me()?.id || 'system', t = nowIso(); if (isNew) { o.created_by = u; o.created_at = t; } o.updated_by = u; o.updated_at = t; return o; }
 
@@ -1872,6 +1888,38 @@ function shiftSummary(date, shift) {
     ${act.filter(n => n.status === 'open').length ? `<ul class="hist print-only">${act.filter(n => n.status === 'open').map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>` : ''}
   </section>`;
 }
+/* mock controlled-drug count at handover (R12, D3, D13): one facility-wide cabinet; the outgoing user counts, the incoming user signs */
+const CC_UNIT = 'ארון מרכזי (הדגמה)';
+const controlledDrugs = () => (S.drug_catalog || []).filter(c => c.controlled_schedule);
+const ccCounts = () => [...(S.controlled_shift_counts || [])].sort((a, b) => b.incoming_at.localeCompare(a.incoming_at)); // newest first
+// expected = counted qty of the last signed count (or the seed balance) − given, non-voided doses of that drug since then
+function ccExpected(reg, until = Date.now()) {
+  const last = ccCounts().find(x => Date.parse(x.incoming_at) <= until && x.rows.some(rw => rw.drug_reg_num === reg));
+  const base = last ? last.rows.find(rw => rw.drug_reg_num === reg).counted_qty : (S.controlled_stock?.[reg] ?? 0);
+  const since = last ? Date.parse(last.incoming_at) : S.controlled_stock_at ? Date.parse(S.controlled_stock_at) : 0;
+  const oids = new Set(S.med_orders.filter(o => o.drug_reg_num === reg).map(o => o.id));
+  return base - S.med_admin.filter(a => oids.has(a.order_id) && a.status === 'given' && !a.superseded_by && Date.parse(a.at) > since && Date.parse(a.at) <= until).length;
+}
+const ccDiffChip = (counted, exp) => counted === exp ? '<span class="chip ok">תקין</span>' : `<span class="chip red">פער ${counted > exp ? '+' : ''}${counted - exp}</span>`;
+const ccIntRe = /^[0-9]+$/;
+function ccBlock() {
+  const canRun = may('meds.run'), list = ccCounts().slice(0, 10), drugs = controlledDrugs();
+  const form = UI.open.cc && canRun ? `<form class="form card pad" data-submit="cc" autocomplete="off" style="margin-bottom:12px">
+    <p class="hint" style="margin:0">מוסר/ת: <b>${esc(me().name)}</b>. סופרים כל תרופה בארון; אחרי השמירה המקבל/ת חותם/ת בקוד אישי. אי אפשר להשלים ספירה לבד.</p>
+    <div class="tbl"><table><thead><tr><th>תרופה</th><th class="n">צפוי</th><th>נספר</th><th>פער</th></tr></thead><tbody>
+    ${drugs.map(c => { const exp = ccExpected(c.reg_num); return `<tr><td><b>${esc(c.name_en)}</b> <small class="muted">${esc(catStrength(c))} · ${esc(c.dosage_form)}</small><br><small class="muted">${esc(c.reg_num)} · ${esc(c.controlled_schedule)}</small></td>
+      <td class="n"><b>${exp}</b></td><td><input name="cc_${c.reg_num}" type="text" inputmode="numeric" data-in="cc-count" data-exp="${exp}" data-reg="${c.reg_num}" style="width:90px" aria-label="כמות שנספרה – ${esc(c.name_en)}"><span class="err" data-for="cc_${c.reg_num}"></span></td><td id="ccd-${c.reg_num}">—</td></tr>`; }).join('')}
+    </tbody></table></div><div id="cc-sum"></div>
+    <div class="actions"><button class="btn pri">${ic('shield')} שמירה וחתימת המקבל/ת</button><button type="button" class="btn" data-act="cc-cancel">ביטול</button></div></form>` : '';
+  return `<section class="summary" aria-label="ספירת סמים מסוכנים">
+    <h2>ספירת סמים מסוכנים (הדגמה) <span class="chip">${CC_UNIT}</span><span class="sp" style="flex:1"></span>${canRun && !UI.open.cc ? `<button class="btn sm pri no-print" data-act="cc-new">${ic('plus')} ספירה חדשה</button>` : ''}</h2>
+    ${form}${!canRun ? '<p class="hint" style="margin:0 0 8px">לקריאה בלבד.</p>' : ''}
+    ${list.length ? `<div class="tbl"><table><thead><tr><th>נחתם</th><th>משמרת</th><th>מוסר/ת</th><th>מקבל/ת</th><th>תוצאה</th></tr></thead><tbody>
+    ${list.map(x => { const bad = x.rows.filter(rw => rw.discrepancy); return `<tr class="${bad.length ? 'overdue' : ''}"><td class="n">${fDT(x.incoming_at)}</td><td>${SHIFT[x.shift] || '—'} ${x.shift_date ? `<small class="muted num">${fD(x.shift_date)}</small>` : ''}</td>
+      <td>${esc(uname(x.outgoing_by))} <small class="muted num">${fT(x.outgoing_at)}</small></td><td>${esc(uname(x.incoming_by))} <small class="muted num">${fT(x.incoming_at)}</small></td>
+      <td>${bad.length ? `<span class="chip red">פער ב-${bad.length}</span>` : '<span class="chip ok">תקין</span>'}<details><summary class="hint">פירוט</summary><ul class="hist">${x.rows.map(rw => { const c = catByReg(rw.drug_reg_num); return `<li${rw.discrepancy ? ' style="color:var(--danger);font-weight:700"' : ''}>${esc(c ? c.name_en : rw.drug_reg_num)}: צפוי ${rw.expected_qty}, נספר ${rw.counted_qty}${rw.discrepancy ? ' ⚠' : ''}</li>`; }).join('')}</ul></details></td></tr>`; }).join('')}
+    </tbody></table></div>` : '<p class="muted" style="margin:0">עדיין אין ספירות.</p>'}</section>`;
+}
 function viewHandover() {
   const ws = workShiftAt();
   const f = F('handover', { date: ws.date, shift: ws.shift, unit: '', rid: '', action: false, unread: false });
@@ -1888,6 +1936,7 @@ function viewHandover() {
     <label class="cb"><input type="checkbox" ${f.unread ? 'checked' : ''} data-ch="f" data-view="handover" data-k="unread"> לא נקראו</label>
   </div>
   <div class="summary-wrap">${shiftSummary(f.date, f.shift)}</div>
+  ${may('meds.view') ? ccBlock() : ''}
   <div class="feed">${list.map(noteCard).join('') || empty('אין הערות במשמרת הזו', may('notes.write') ? 'לחצו "הערה חדשה" כדי להשאיר הערה למשמרת הבאה.' : '')}</div>
   ${openAct.length ? `<h2 style="font-size:18px;margin:20px 0 8px">עדיין דורש טיפול ממשמרות קודמות</h2><div class="feed">${openAct.sort((a, b) => b.at.localeCompare(a.at)).map(noteCard).join('')}</div>` : ''}`;
 }
@@ -2899,6 +2948,8 @@ const ACT = {
   'note-correct': el => openPanel({ type: 'note', correct: el.dataset.id }),
   'ho-day': el => { UI.f.handover.date = addDays(UI.f.handover.date, +el.dataset.d); renderMain(); },
   'ho-today': () => { const w = workShiftAt(); Object.assign(UI.f.handover, { date: w.date, shift: w.shift }); renderMain(); },
+  'cc-new': () => { if (!may('meds.run')) return toast(NO_PERM_ACT); UI.open.cc = true; renderMain(); setTimeout(() => $('[data-in="cc-count"]')?.focus(), 0); },
+  'cc-cancel': () => { UI.open.cc = false; renderMain(); },
   'ho-shift': el => { UI.f.handover.shift = el.dataset.v; renderMain(); },
   // calls
   'new-call': el => openPanel({ type: 'call', rid: el.dataset.rid }),
@@ -2987,6 +3038,12 @@ const IN = {
   'round-q': el => { UI.f.round.q = el.value; renderMain(); },
   f: el => { let v = el.type === 'checkbox' ? el.checked : el.value; if (el.dataset.date != null) { if (v && !parseD(v)) { el.classList.add('inv'); return; } v = v ? parseD(v) : ''; } UI.f[el.dataset.view][el.dataset.k] = v; renderMain(); },
   'call-res': el => { const r = residentFromLabel(el.value), loc = el.form.elements.location; if (r && (!loc.value || /^דירה /.test(loc.value))) loc.value = 'דירה ' + r.apartment; },
+  'cc-count': el => { // live discrepancy per row and a summary
+    const v = el.value.trim(), exp = +el.dataset.exp, cell = $('#ccd-' + el.dataset.reg);
+    if (cell) cell.innerHTML = v === '' ? '—' : ccIntRe.test(v) ? ccDiffChip(+v, exp) : '<span class="chip warn">מספר שלם</span>';
+    const bad = $$('[data-in="cc-count"]', el.form).filter(x => ccIntRe.test(x.value.trim()) && +x.value.trim() !== +x.dataset.exp).length, sum = $('#cc-sum');
+    if (sum) sum.innerHTML = bad ? `<p class="note-inline red" style="margin:0" role="alert">נמצא פער ב-${bad} תרופות. אפשר לשמור – הפער יירשם ויסומן באדום.</p>` : '';
+  },
   'cat-pick': el => { // picking a catalogue entry fills the route (still editable) and shows the read-only drug details
     const c = catFromPick(el.value), f = el.form, box = $('#cat-info'); if (box) box.innerHTML = catInfo(c);
     const ab = $('#alg-box'); if (ab && f.dataset.pick !== (c?.reg_num || '')) ab.innerHTML = allergyBox(allergyConflict(res(f.dataset.rid), c)); // D6 live warning
@@ -3062,6 +3119,18 @@ const SUB = {
     S.clin.intake.push(stamp({ id: uid('IC'), resident_id: form.dataset.rid, order_ids: form.dataset.ids.split(','), at: nowIso(), by: me().id, result: d.result, note: d.note }, true)); medF().sel = []; closePanel(); refresh(); toast('בדיקת הנטילה נשמרה');
   },
   'prospect-fu': form => saveProspectFu(form),
+  cc: form => { // R12: outgoing user = me; the incoming user signs in the R11 PIN modal
+    if (!may('meds.run')) return toast(NO_PERM_ACT);
+    const d = readForm(form), e = {}, drugs = controlledDrugs();
+    for (const c of drugs) { const v = d['cc_' + c.reg_num]; if (v === '') e['cc_' + c.reg_num] = 'שדה חובה'; else if (!ccIntRe.test(v)) e['cc_' + c.reg_num] = 'מספר שלם, 0 ומעלה'; }
+    if (!showErrors(form, e)) return;
+    const outAt = nowIso(), rows = drugs.map(c => { const exp = ccExpected(c.reg_num), cnt = +d['cc_' + c.reg_num]; return { drug_reg_num: c.reg_num, expected_qty: exp, counted_qty: cnt, discrepancy: cnt !== exp }; }), bad = rows.filter(rw => rw.discrepancy).length;
+    openSignerModal({ title: 'חתימת המקבל/ת – ספירת סמים', who: 'מקבל/ת המשמרת (משתמש/ת אחר/ת)',
+      sub: `<p style="margin:0">מוסר/ת: <b>${esc(me().name)}</b> · ${rows.length} תרופות · ${bad ? `<span class="chip red">פער ב-${bad}</span>` : '<span class="chip ok">ללא פערים</span>'}</p>`,
+      onOk: u => { const w = workShiftAt(); S.controlled_shift_counts.push({ id: uid('CC'), at: outAt, shift: w.shift, shift_date: w.date, unit: CC_UNIT, rows, outgoing_by: me().id, outgoing_at: outAt, incoming_by: u.id, incoming_at: nowIso() });
+        UI.open.cc = false; refresh(); toast(bad ? `הספירה נשמרה עם פער ב-${bad} תרופות` : 'הספירה נשמרה ונחתמה'); },
+      onCancel: () => toast('הספירה לא נשמרה – נדרשת חתימת המקבל/ת') });
+  },
   signer: form => {
     const m = UI.modal; if (!m) return; const d = readForm(form);
     const v = verifySigner(d.signer, d.pin); if (v.err) return showErrors(form, { [v.err === 'קוד שגוי' ? 'pin' : 'signer']: v.err }); // the dose / count stays unsaved
