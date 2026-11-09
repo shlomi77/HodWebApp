@@ -508,7 +508,7 @@ const NOTIFY_TO = { family_proxy: 'משפחה / מיופה כוח', doctor: 'ר�
 const MED_ROUNDS = [
   { id: 'morning', name: 'בוקר', from: '06:00', to: '11:00' }, { id: 'noon', name: 'צהריים', from: '11:00', to: '16:00' },
   { id: 'evening', name: 'ערב', from: '16:00', to: '21:00' }, { id: 'night', name: 'לילה', from: '21:00', to: '06:00' }];
-const NOT_GIVEN = ['סירב', 'ישן', 'באשפוז', 'לא במלאי', 'הושהה לפי הוראה', 'אחר'];
+const NOT_GIVEN = ['סירב', 'ישן', 'באשפוז/חופשה', 'לא במלאי', 'הושהה לפי הוראה', 'הקאה', 'אחר']; // D11; older stored values (e.g. באשפוז) are shown as stored
 const VITALS = {
   bp: { name: 'לחץ דם', unit: 'mmHg', ok: v => { const [s, d] = String(v).split('/').map(Number); return s >= 90 && s <= 140 && d >= 60 && d <= 90; }, ph: '120/80' },
   pulse: { name: 'דופק', unit: 'לדקה', ok: v => +v >= 50 && +v <= 100, ph: '72' },
@@ -1668,7 +1668,7 @@ function tabResEvents(r) {
 function tabNursing(r) {
   const orders = S.med_orders.filter(o => o.resident_id === r.id && o.active), d = today();
   const times = [...new Set(orders.flatMap(o => o.times))].sort();
-  const cell = (o, t) => { if (!o.times.includes(t)) return '<td></td>'; const a = doseRec(o.id, d, t); const s = a?.status || 'pending'; return `<td class="n">${s === 'given' ? `<span class="chip ok">ניתן ${fT(a.at)}</span>` : s === 'not_given' ? `<span class="chip red" title="${esc(a.reason)}">לא ניתן</span>` : '<span class="chip">ממתין</span>'}</td>`; };
+  const cell = (o, t) => { if (!o.times.includes(t)) return '<td></td>'; const a = doseRec(o.id, d, t); const s = a?.status || 'pending'; return `<td class="n">${s === 'given' ? `<span class="chip ok">ניתן ${fT(a.at)}</span>` : s === 'not_given' ? `<span class="chip red" title="${esc(a.reason + (a.note ? ' – ' + a.note : ''))}">לא ניתן: ${esc(a.reason)}</span>` : '<span class="chip">ממתין</span>'}</td>`; };
   const vit = S.vitals.filter(v => v.resident_id === r.id).sort((a, b) => b.at.localeCompare(a.at));
   const byType = {}; for (const v of vit) (byType[v.type] ||= []).length < 5 && byType[v.type].push(v);
   return `<h3 style="margin-top:0">טבלת מתן תרופות להיום (${fD(d)})</h3>
@@ -2863,7 +2863,8 @@ const ACT = {
   'dose-ng-cancel': () => { UI.open.ng = null; renderMain(); },
   'dose-ng': el => {
     if (!may('meds.run')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
-    const { o, t } = el.dataset, reason = $('#ng-reason').value, note = $('#ng-note').value.trim();
+    const { o, t } = el.dataset, ord = byId(S.med_orders, o), reason = $('#ng-reason').value, note = $('#ng-note').value.trim();
+    if (!ord || ord.prn || !ord.active || !ord.times.includes(t)) return; // R10: not-given is only for scheduled slots, never PRN
     if (!reason) { const err = $('#ng-err'); if (err) err.textContent = 'חובה לבחור סיבה'; $('#ng-reason').focus(); return; } if (reason === 'אחר' && !note) { const err = $('#ng-err'); if (err) err.textContent = 'בסיבה "אחר" כתבו הערה'; $('#ng-note').focus(); return; }
     if (doseRec(o, today(), t)) return; S.med_admin.push({ id: uid('MA'), order_id: o, date: today(), time: t, status: 'not_given', reason, note, at: nowIso(), by: me().id, history: [] }); UI.open.ng = null; save(); renderMain();
   },
