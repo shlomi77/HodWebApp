@@ -151,6 +151,8 @@ tr.click:hover td{background:color-mix(in srgb,var(--accent) 5%,var(--surface))}
 tr.sel td{background:var(--accent-soft)}
 tr.overdue td{background:var(--danger-soft)}
 tr.overdue td:first-child{box-shadow:inset -4px 0 0 var(--danger)}
+tr.superseded td{opacity:.55}
+tr.flash td{background:var(--accent-soft)!important}
 td.n,th.n{white-space:nowrap;font-variant-numeric:tabular-nums}
 .empty{padding:36px 16px;text-align:center;color:var(--muted)}
 .empty b{display:block;font-size:18px;color:var(--fg);margin-bottom:4px}
@@ -835,6 +837,8 @@ function seed() {
         pushC('meetings', 'TM', { resident_id: r.id, at: dt, participants: ['U3', 'U4', 'U7'].concat((i + j) % 2 ? ['U2'] : [], (i + j) % 3 === 0 ? ['U5'] : []), participants_other: (i + j) % 4 === 1 ? 'בת המשפחה' : (i + j) % 4 === 3 ? 'בן המשפחה' : '', summary, decisions,
           tasks: [{ text: t1, owner: o1, due: addDays(dt, 3), done: true }, { text: t2, owner: o2, due: due2, done: due2 < today() }], by: 'U3' }); }
     });
+    { const o = D.clin.nursereport[0], t = iso(new Date(Date.parse(o.created_at) + 40 * 60000)); // R13 seed: one corrected nursing report (the original stays, superseded)
+      pushC('nursereport', 'NR', { resident_id: o.resident_id, at: o.at, shift: o.shift, text: o.text + ' לחץ דם נמדד ונמצא תקין.', flags: o.flags, by: o.by, created_at: t, correction_of: o.id, correction_reason: 'הושמט פרט מהדיווח' }); o.superseded_by = D.clin.nursereport.at(-1).id; }
     // vaccines: flu for most residents, a few others; injections for ~8; tests across statuses; referrals for ~10 across all types / urgencies / statuses
     D.residents.forEach((r, i) => {
       if (isGone(r)) return; const nurse = i % 2 ? 'אחראי משמרת' : 'אחות 1', by = i % 2 ? 'U2' : 'U3';
@@ -902,6 +906,9 @@ function seedActivity() {
     const r = byId(S.residents, o.resident_id); if (openMove(r.id) || r.status !== 'active') continue;
     if (hm2min(tm) + 45 < nowM) { const ng = R() < .06, dc = !ng && drugOf(o)?.requires_double_check; S.med_admin.push({ id: uid('MA'), order_id: o.id, date: t, time: tm, status: ng ? 'not_given' : 'given', reason: ng ? 'סירב' : null, note: '', at: at(t, tm), by: 'U3', history: [], ...(dc ? { second_check_by: 'U2', second_check_at: at(t, tm) } : {}) }); }
   }
+  { const a = S.med_admin.find(x => !x.prn && x.date === t && x.status === 'given' && !x.second_check_by && !drugOf(byId(S.med_orders, x.order_id))?.controlled_schedule); // R13 seed: one dose mark corrected today
+    if (a) { const vt = iso(new Date(Date.parse(a.at) + 20 * 60000)), v = { id: uid('MA'), order_id: a.order_id, date: a.date, time: a.time, status: 'voided', correction_of: a.id, correction_reason: 'סומן בטעות – הדייר/ת ישן/ה בזמן החלוקה', at: vt, by: 'U3' };
+      a.superseded_by = v.id; S.med_admin.push(v, { id: uid('MA'), order_id: a.order_id, date: a.date, time: a.time, status: 'not_given', reason: 'ישן', note: 'סומן מחדש אחרי תיקון', at: iso(new Date(Date.parse(vt) + 60000)), by: 'U3', history: [] }); } }
 }
 
 /* two prior signed controlled-drug counts (R12), one with a discrepancy; run after the seeded doses */
@@ -1740,7 +1747,7 @@ function tabNursing(r) {
   const orders = S.med_orders.filter(o => o.resident_id === r.id && o.active), d = today();
   const times = [...new Set(orders.flatMap(o => o.times))].sort();
   const cell = (o, t) => { if (!o.times.includes(t)) return '<td></td>'; const a = doseRec(o.id, d, t); const s = a?.status || 'pending'; return `<td class="n">${s === 'given' ? `<span class="chip ok" title="${esc(uname(a.by) + (a.second_check_by ? ' · אימות כפול: ' + uname(a.second_check_by) : ''))}">ניתן ${fT(a.at)}</span>` : s === 'not_given' ? `<span class="chip red" title="${esc(a.reason + (a.note ? ' – ' + a.note : ''))}">לא ניתן: ${esc(a.reason)}</span>` : '<span class="chip">ממתין</span>'}</td>`; };
-  const vit = S.vitals.filter(v => v.resident_id === r.id).sort((a, b) => b.at.localeCompare(a.at));
+  const vit = liveVitals(r.id);
   const byType = {}; for (const v of vit) (byType[v.type] ||= []).length < 5 && byType[v.type].push(v);
   return `<h3 style="margin-top:0">טבלת מתן תרופות להיום (${fD(d)})</h3>
   ${orders.length ? `<div class="tbl"><table><thead><tr><th>תרופה</th><th>מינון</th><th>דרך מתן</th>${times.map(t => `<th class="n">${t}</th>`).join('')}<th>לפי הצורך</th></tr></thead><tbody>${orders.map(o => `<tr><td><b>${esc(o.drug)}</b></td><td>${esc(o.dose)}</td><td>${esc(o.route)}</td>${times.map(t => cell(o, t)).join('')}<td>${o.prn ? (prnGiven(o.id).at(-1) ? `<small>כן · ${fDT(prnGiven(o.id).at(-1).at)}</small>` : 'כן') : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">אין הוראות תרופות פעילות.</p>'}
@@ -2179,7 +2186,8 @@ function eventFlow(ev, to) {
 /* ================================================================
    Medications and nursing (light)
    ================================================================ */
-const doseRec = (oid, d, t) => S.med_admin.find(a => a.order_id === oid && !a.prn && a.date === d && a.time === t && a.status !== 'undone'); // PRN rows never occupy a slot
+const doseRec = (oid, d, t) => S.med_admin.filter(a => a.order_id === oid && !a.prn && a.date === d && a.time === t && (a.status === 'given' || a.status === 'not_given') && !a.superseded_by).sort((a, b) => b.at.localeCompare(a.at))[0]; // PRN rows never occupy a slot; a corrected (superseded) mark frees it (R13)
+const voidRow = (a, reason, extra = {}) => { const v = { id: uid('MA'), order_id: a.order_id, ...(a.prn ? { prn: true } : {}), date: a.date, time: a.time, status: 'voided', correction_of: a.id, correction_reason: reason, at: nowIso(), by: me().id, ...extra }; S.med_admin.push(v); a.superseded_by = v.id; return v; };
 /* PRN (R9, D10): measured from given, non-voided PRN rows of the same order; rolling 24 h window */
 const prnGiven = oid => S.med_admin.filter(a => a.order_id === oid && a.prn && a.status === 'given' && !a.superseded_by).sort((a, b) => a.at.localeCompare(b.at));
 function prnState(o, now = Date.now()) {
@@ -2231,7 +2239,7 @@ function viewMeds() {
           : UI.open.ack === key ? `<span class="confirm" role="alert">⚠ רגישות: ${esc(allergyConflict(r, drugOf(o)).allergens.join(', '))} <label class="cb"><input type="checkbox" id="ack-cb"> ${ACK_LABEL}</label><button class="btn sm ok" data-act="dose-give" data-ack="1" data-o="${o.id}" data-t="${t}">ניתן</button><button class="btn sm" data-act="dose-ack-cancel">ביטול</button><span class="err" id="ack-err"></span></span>`
           : `<button class="btn sm ok" data-act="dose-give" data-o="${o.id}" data-t="${t}">ניתן</button><button class="btn sm" data-act="dose-ng-open" data-k="${key}">לא ניתן</button>${UI.open.doseErr?.key === key ? `<span class="err" role="alert">${esc(UI.open.doseErr.msg)}</span>` : ''}`;
         else ctl = `${a.status === 'given' ? givenChip(a) : `<span class="chip red">לא ניתן: ${esc(a.reason)}${a.note ? ' – ' + esc(a.note) : ''}</span>`}
-          ${canRun ? (UI.open.undo === key ? `<span class="confirm">סיבת ביטול: <input id="dose-undo-reason" type="text" aria-label="סיבת ביטול"><button class="btn sm danger" data-act="dose-undo" data-o="${o.id}" data-t="${t}">בטל</button><button class="btn sm" data-act="dose-undo-cancel">חזרה</button><span class="err" id="dose-undo-err"></span></span>` : `<button class="btn sm ghost" data-act="dose-undo-open" data-k="${key}">ביטול</button>`) : ''}`;
+          ${canRun ? (UI.open.undo === key ? `<span class="confirm">סיבת התיקון: <input id="dose-undo-reason" type="text" aria-label="סיבת התיקון"><button class="btn sm danger" data-act="dose-undo" data-o="${o.id}" data-t="${t}">שמירת תיקון</button><button class="btn sm" data-act="dose-undo-cancel">חזרה</button><span class="err" id="dose-undo-err"></span></span>` : `<button class="btn sm ghost" data-act="dose-undo-open" data-k="${key}">תיקון</button>`) : ''}`;
         return `<div class="dose"><span class="dn"><span class="num">${t}</span> · ${esc(o.drug)} <small>${esc(o.dose)} · ${esc(o.route)}</small> ${catFlagChips(drugOf(o), false)}</span>${ctl}</div>`; }).join('')}${prn}</div></div>`;
   }).join('')}</div>`).join('');
   return `<div class="ph"><h1>חלוקת תרופות</h1><span class="sub">${dow(d)} ${fD(d)}</span><span class="sp"></span>
@@ -2280,7 +2288,7 @@ function panelVitals(p) {
   <div class="p-b"><form class="form" data-submit="vitals" data-rid="${r.id}" autocomplete="off">
     ${Object.entries(VITALS).map(([k, v], i) => fld(`${v.name} (${v.unit})`, `<input name="${k}" type="text" inputmode="decimal" placeholder="${v.ph}" data-in="vital" data-k="${k}" ${i ? '' : 'autofocus'}>`, k)).join('')}
     <div class="actions"><button class="btn pri">שמירת מדדים</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form>
-    <div class="p-sec"><h3>מדידות אחרונות</h3><ul class="hist">${S.vitals.filter(v => v.resident_id === r.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 8).map(v => `<li>${VITALS[v.type].name}: <b style="${VITALS[v.type].ok(v.value) ? '' : 'color:var(--danger)'}">${esc(v.value)}</b> <small>· ${fDT(v.at)}</small></li>`).join('') || '<li class="muted">אין</li>'}</ul></div></div>`;
+    <div class="p-sec"><h3>מדידות אחרונות</h3><ul class="hist">${liveVitals(r.id).slice(0, 8).map(v => `<li>${VITALS[v.type].name}: <b style="${VITALS[v.type].ok(v.value) ? '' : 'color:var(--danger)'}">${esc(v.value)}</b> <small>· ${fDT(v.at)}</small></li>`).join('') || '<li class="muted">אין</li>'}</ul></div></div>`;
 }
 
 /* ================================================================
@@ -2430,7 +2438,7 @@ const MED_SECTIONS = {
   personal: { name: 'פרטים אישיים', icon: 'user', render: (r, ed) => tabPersonal(r, ed), actions: (r, ed) => fileEditActions('personal', ed) },
   contacts: { name: 'אנשי קשר', icon: 'phone', render: (r, ed) => tabContacts(r, ed), actions: (r, ed) => fileEditActions('contacts', ed) },
   movements: { name: 'תנועות מטופל', icon: 'move', render: r => tabResMovements(r), actions: r => may('mov.create') && !openMove(r.id) && !isGone(r) ? `<button class="btn pri" data-act="new-move" data-rid="${r.id}">${ic('plus')} פתח תנועה</button>` : '' },
-  followup: { name: 'מעקב טיפול', icon: 'check', coll: 'followup', prefix: 'FU', write: 'clinical.edit',
+  followup: { name: 'מעקב טיפול', icon: 'check', coll: 'followup', prefix: 'FU', write: 'clinical.edit', lock: true,
     fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'discipline', label: 'תחום', type: 'select', opts: DISCIPLINES, req: 1 }, { k: 'goal', label: 'מטרה', type: 'text', req: 1 },
       { k: 'action', label: 'פעולה שבוצעה', type: 'textarea', req: 1 }, { k: 'status', label: 'סטטוס', type: 'select', opts: FU_STATUS, req: 1 }],
     defaults: () => ({ at: today(), status: 'פתוח' }), validate: d => futureDate(d.at) ? { at: 'לא יכול להיות בעתיד' } : {},
@@ -2438,18 +2446,18 @@ const MED_SECTIONS = {
     match: (x, f) => (!f.status || x.status === f.status) && (!f.discipline || x.discipline === f.discipline),
     cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'תחום', td: x => esc(x.discipline) }, { label: 'מטרה', td: x => `<b>${esc(x.goal)}</b>` }, { label: 'פעולה', td: x => esc(x.action) },
       { label: 'סטטוס', td: x => `<span class="chip ${{ 'פתוח': 'warn', 'בטיפול': 'blue', 'הושג': 'ok', 'הופסק': '' }[x.status]}">${esc(x.status)}</span>` }] },
-  medreport: { name: 'דיווח רפואי', icon: 'note', coll: 'medreport', prefix: 'MR', write: 'clinical.edit',
+  medreport: { name: 'דיווח רפואי', icon: 'note', coll: 'medreport', prefix: 'MR', write: 'clinical.edit', lock: true,
     fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'doctor', label: 'רופא/ה', type: 'datalist', opts: () => S.settings.doctors, req: 1 }, { k: 'findings', label: 'ממצאים', type: 'textarea', req: 1 }, { k: 'recommendations', label: 'המלצות', type: 'textarea' }],
     defaults: () => ({ at: today() }), validate: d => futureDate(d.at) ? { at: 'לא יכול להיות בעתיד' } : {}, filters: [{ k: 'q', label: 'חיפוש בממצאים ובהמלצות' }], match: (x, f) => !f.q || norm(x.findings + x.recommendations + x.doctor).includes(norm(f.q)),
     cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'רופא/ה', td: x => esc(x.doctor) }, { label: 'ממצאים', td: x => esc(x.findings) }, { label: 'המלצות', td: x => esc(x.recommendations || '—') }] },
-  nursereport: { name: 'דיווח סיעודי', icon: 'heart', coll: 'nursereport', prefix: 'NR', write: 'clinical.edit',
+  nursereport: { name: 'דיווח סיעודי', icon: 'heart', coll: 'nursereport', prefix: 'NR', write: 'clinical.edit', lock: true,
     fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'shift', label: 'משמרת', type: 'select', opts: SHIFT, req: 1 }, { k: 'nurse', label: 'אח/ות מדווח/ת', type: 'custom', html: () => `<div class="fld"><span>אח/ות מדווח/ת</span><div><b>${esc(me().name)}</b> <span class="hint">(נרשם אוטומטית)</span></div></div>`, read: () => undefined },
       { k: 'text', label: 'דיווח', type: 'textarea', req: 1 }, { k: 'flags', label: 'סימונים', type: 'multi', opts: NURSE_FLAGS }],
     defaults: () => ({ at: workShiftAt().date, shift: workShiftAt().shift }), validate: d => futureDate(d.at) ? { at: 'לא יכול להיות בעתיד' } : {},
     filters: [{ k: 'shift', label: 'כל המשמרות', opts: SHIFT }, { k: 'flag', label: 'כל הסימונים', opts: Object.fromEntries(NURSE_FLAGS.map(x => [x, x])) }], match: (x, f) => (!f.shift || x.shift === f.shift) && (!f.flag || (x.flags || []).includes(f.flag)),
     cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'משמרת', td: x => SHIFT[x.shift] || '—' }, { label: 'אח/ות', td: x => esc(uname(x.by)) }, { label: 'דיווח', td: x => esc(x.text) },
       { label: 'סימונים', td: x => (x.flags || []).map(fl => `<span class="chip warn">${esc(fl)}</span>`).join(' ') || '—' }] },
-  meetings: { name: 'ישיבות צוות', icon: 'users', coll: 'meetings', prefix: 'TM', write: 'clinical.edit',
+  meetings: { name: 'ישיבות צוות', icon: 'users', coll: 'meetings', prefix: 'TM', write: 'clinical.edit', lock: true,
     fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'participants', label: 'משתתפים', type: 'multi', opts: () => Object.fromEntries(S.users.filter(u => u.active).map(u => [u.id, u.name])) },
       { k: 'participants_other', label: 'משתתפים נוספים (טקסט חופשי)', type: 'text' }, { k: 'summary', label: 'סיכום', type: 'textarea', req: 1 }, { k: 'decisions', label: 'החלטות', type: 'textarea' },
       { k: 'tasks', label: 'משימות להמשך', type: 'custom', html: v => meetingTasksField(v), read: form => $$('[data-trow]', form).map(row => { const g2 = k => row.querySelector(`[data-t="${k}"]`); return { text: g2('text').value.trim(), owner: g2('owner').value, due: parseD(g2('due').value) || '', due_raw: g2('due').value.trim(), done: g2('done').checked }; }).filter(t => t.text) }],
@@ -2457,8 +2465,8 @@ const MED_SECTIONS = {
     validate: d => { const e = {}; if (futureDate(d.at)) e.at = 'לא יכול להיות בעתיד'; if (!d.participants.length && !d.participants_other) e.participants = 'בחרו לפחות משתתף/ת אחד/ת'; if (d.tasks.some(t => t.due_raw && !t.due)) e.tasks = 'תאריך יעד בפורמט dd/mm/yyyy'; d.tasks.forEach(t => delete t.due_raw); return e; },
     cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'משתתפים', td: x => esc([...(x.participants || []).map(uname), x.participants_other].filter(Boolean).join(', ')) },
       { label: 'סיכום והחלטות', td: x => `${esc(x.summary)}${x.decisions ? `<br><small class="muted">החלטות: ${esc(x.decisions)}</small>` : ''}` },
-      { label: 'משימות', td: x => (x.tasks || []).map((t, i) => `<label class="cb" style="min-height:30px;font-weight:500"><input type="checkbox" data-act="mtask-done" data-id="${x.id}" data-i="${i}" ${t.done ? 'checked' : ''} ${may('clinical.edit') ? '' : 'disabled'}> <span style="${t.done ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(t.text)}</span> <small class="muted">${esc(uname(t.owner))}${t.due ? ' · עד ' + fD(t.due) : ''}</small></label>`).join('<br>') || '—' }] },
-  vaccines: { name: 'חיסונים', icon: 'shield', coll: 'vaccines', prefix: 'VC', write: 'clinical.edit',
+      { label: 'משימות', td: x => (x.tasks || []).map((t, i) => `<label class="cb" style="min-height:30px;font-weight:500"><input type="checkbox" data-act="mtask-done" data-id="${x.id}" data-i="${i}" ${t.done ? 'checked' : ''} ${may('clinical.edit') && !x.superseded_by ? '' : 'disabled'}> <span style="${t.done ? 'text-decoration:line-through;color:var(--muted)' : ''}">${esc(t.text)}</span> <small class="muted">${esc(uname(t.owner))}${t.due ? ' · עד ' + fD(t.due) : ''}</small></label>`).join('<br>') || '—' }] },
+  vaccines: { name: 'חיסונים', icon: 'shield', coll: 'vaccines', prefix: 'VC', write: 'clinical.edit', lock: true,
     fields: [{ k: 'vaccine', label: 'חיסון', type: 'datalist', opts: VACCINES, req: 1 }, { k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'dose_no', label: 'מנה מס׳', type: 'number', req: 1 },
       { k: 'given_by', label: 'ניתן ע״י', type: 'datalist', opts: () => S.users.filter(u => u.active).map(u => u.name), req: 1 }, { k: 'next_due', label: 'מועד המנה הבאה', type: 'date' }],
     defaults: () => ({ at: today(), dose_no: 1, given_by: me().name }),
@@ -2466,7 +2474,7 @@ const MED_SECTIONS = {
     filters: [{ k: 'vaccine', label: 'כל החיסונים', opts: Object.fromEntries(VACCINES.map(x => [x, x])) }], match: (x, f) => !f.vaccine || x.vaccine === f.vaccine,
     cols: [{ label: 'חיסון', td: x => `<b>${esc(x.vaccine)}</b>` }, { label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'מנה', td: x => `<span class="num">${esc(x.dose_no)}</span>` }, { label: 'ניתן ע״י', td: x => esc(x.given_by) },
       { label: 'מנה הבאה', td: x => x.next_due ? `<span class="num">${fD(x.next_due)}</span>${x.next_due < today() ? ' <span class="chip red">באיחור</span>' : ''}` : '—' }] },
-  injections: { name: 'מתן זריקות', icon: 'syringe', coll: 'injections', prefix: 'IN', write: 'clinical.edit',
+  injections: { name: 'מתן זריקות', icon: 'syringe', coll: 'injections', prefix: 'IN', write: 'clinical.edit', lock: true,
     fields: [{ k: 'drug', label: 'תרופה (שם פיקטיבי)', type: 'text', req: 1 }, { k: 'dose', label: 'מינון', type: 'text', req: 1 }, { k: 'site', label: 'מקום ההזרקה', type: 'select', opts: INJ_SITES, req: 1 },
       { k: 'at', label: 'תאריך ושעה', type: 'datetime', req: 1 }, { k: 'given_by', label: 'ניתן ע״י', type: 'datalist', opts: () => S.users.filter(u => u.active).map(u => u.name), req: 1 }],
     defaults: () => ({ at: nowIso(), given_by: me().name }), validate: d => d.at && Date.parse(wallToIso(d.at)) > Date.now() + 60000 ? { at: 'לא יכול להיות בעתיד' } : {},
@@ -2489,14 +2497,14 @@ const MED_SECTIONS = {
     cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'הפניה אל', td: x => `<b>${esc(x.target)}</b><br><small class="muted">${esc(x.ref_type)}</small>` }, { label: 'סיבה', td: x => esc(x.reason) },
       { label: 'רופא/ה מפנה', td: x => esc(x.doctor) }, { label: 'דחיפות', td: x => `<span class="chip ${REFERRAL_URG_CHIP[x.urgency]}">${REFERRAL_URGENCY[x.urgency]}</span>` },
       { label: 'סטטוס', td: x => `<span class="chip ${REFERRAL_ST_CHIP[x.status]}">${REFERRAL_STATUS[x.status]}</span>${x.appointment ? `<br><small class="muted num">תור: ${fDT(x.appointment)}</small>` : ''}${x.result ? `<br><small class="muted">${esc(x.result)}</small>` : ''}` }] },
-  fall: { name: 'דיווח נפילה', icon: 'alert', coll: 'falls', prefix: 'FL', write: 'clinical.edit',
+  fall: { name: 'דיווח נפילה', icon: 'alert', coll: 'falls', prefix: 'FL', write: 'clinical.edit', lock: true,
     fields: [{ k: 'at', label: 'תאריך ושעה', type: 'datetime', req: 1 }, { k: 'place', label: 'מקום', type: 'select', opts: [...COMMON_AREAS, 'דירה'], req: 1 }, { k: 'circumstances', label: 'נסיבות', type: 'textarea', req: 1 },
       { k: 'injury', label: 'הייתה פגיעה', type: 'bool' }, { k: 'injury_desc', label: 'תיאור הפגיעה', type: 'text', when: 'injury:on', req: 1 }, { k: 'actions', label: 'פעולות שננקטו', type: 'textarea' },
       { k: 'family_notified', label: 'המשפחה עודכנה', type: 'bool' }, { k: 'family_at', label: 'שעת עדכון המשפחה', type: 'time', when: 'family_notified:on' },
       { k: 'doctor_notified', label: 'רופא/ה עודכן/ה', type: 'bool' }, { k: 'doctor_at', label: 'שעת עדכון הרופא/ה', type: 'time', when: 'doctor_notified:on' },
       { k: 'event_id', label: 'קישור לאירוע חריג', type: 'custom', html: (v, r) => fallEventField(v, r), read: form => form.elements.event_id?.value || '' }],
     defaults: () => ({ at: nowIso() }),
-    validate: (d, x) => { const e = {}; if (d.at && Date.parse(wallToIso(d.at)) > Date.now() + 60000) e.at = 'לא יכול להיות בעתיד'; if (d.event_id && S.clin.falls.some(f => f.event_id === d.event_id && f.id !== x?.id)) e.event_id = 'האירוע כבר מקושר לדיווח נפילה אחר'; return e; },
+    validate: (d, x) => { const e = {}; if (d.at && Date.parse(wallToIso(d.at)) > Date.now() + 60000) e.at = 'לא יכול להיות בעתיד'; if (d.event_id && S.clin.falls.some(f => f.event_id === d.event_id && f.id !== x?.id && !f.superseded_by)) e.event_id = 'האירוע כבר מקושר לדיווח נפילה אחר'; return e; },
     after: (rec, isNew, d) => { if (!rec.event_id && d.open_event) { const r = res(rec.resident_id), dk = dkey(rec.at), t = v => v ? at(dk, v) : null;
       openPanel({ type: 'event', rids: [r.id], fall_id: rec.id, prefill: { type_id: 'E_FALL', occurred_at: rec.at, location: rec.place === 'דירה' ? 'דירה ' + r.apartment : rec.place, description: rec.circumstances, immediate_actions: rec.actions || '',
         injury: rec.injury, injury_desc: rec.injury_desc, family_notified: rec.family_notified, family_notified_at: rec.family_notified ? t(rec.family_at) || rec.at : null, doctor_notified: rec.doctor_notified, doctor_notified_at: rec.doctor_notified ? t(rec.doctor_at) || rec.at : null } }); } },
@@ -2504,7 +2512,7 @@ const MED_SECTIONS = {
       { label: 'פגיעה', td: x => x.injury ? `<span class="chip red">כן</span> ${esc(x.injury_desc)}` : 'לא' },
       { label: 'עדכונים', td: x => `<small>משפחה: ${x.family_notified ? 'כן ' + esc(x.family_at || '') : 'לא'}<br>רופא/ה: ${x.doctor_notified ? 'כן ' + esc(x.doctor_at || '') : 'לא'}</small>` },
       { label: 'אירוע חריג', td: x => x.event_id ? `<button class="btn sm" data-act="open-event" data-id="${esc(x.event_id)}">${esc(x.event_id)}</button>` : '<span class="muted">לא מקושר</span>' }] },
-  sos: { name: 'SOS', icon: 'bell', coll: 'sos', prefix: 'SO', write: 'clinical.edit',
+  sos: { name: 'SOS', icon: 'bell', coll: 'sos', prefix: 'SO', write: 'clinical.edit', lock: true,
     fields: [{ k: 'at', label: 'תאריך ושעה', type: 'datetime', req: 1 }, { k: 'trigger', label: 'הפעלה', type: 'select', opts: SOS_TRIGGER, req: 1 }, { k: 'response_at', label: 'זמן תגובה', type: 'datetime' },
       { k: 'outcome', label: 'תוצאה', type: 'select', opts: SOS_OUTCOME, req: 1 }, { k: 'handler', label: 'מטפל/ת', type: 'select', opts: () => Object.fromEntries(S.users.filter(u => u.active).map(u => [u.id, u.name])) }],
     defaults: () => ({ at: nowIso(), handler: me().id }),
@@ -2575,9 +2583,12 @@ function medsSection(r) {
 }
 /* PRN rules, history and give button in the meds tab (manager sees it read-only) */
 function prnCell(o, canRun) {
-  const s = prnState(o), hist = S.med_admin.filter(a => a.order_id === o.id && a.prn).sort((a, b) => b.at.localeCompare(a.at));
+  const s = prnState(o), hist = S.med_admin.filter(a => a.order_id === o.id && a.prn && a.status !== 'voided').sort((a, b) => b.at.localeCompare(a.at));
+  const fixOf = a => a.superseded_by && byId(S.med_admin, a.superseded_by);
   return `<br><small>${prnRules(o)}</small><br><small class="muted">${prnLastTxt(s)}</small>
-    ${hist.length ? `<details><summary class="hint">היסטוריית מתן (${hist.length})</summary><ul class="hist">${hist.slice(0, 10).map(a => `<li><small class="num">${fDT(a.at)} · ${esc(uname(a.by))}${a.second_check_by ? ` · אימות: ${esc(uname(a.second_check_by))}` : ''}${a.allergy_ack ? ' · ⚠ אושרה אזהרת רגישות' : ''}</small><div>${esc(a.indication_text || '')}</div></li>`).join('')}</ul></details>` : ''}
+    ${hist.length ? `<details ${UI.open.prnfix && hist.some(a => a.id === UI.open.prnfix) ? 'open' : ''}><summary class="hint">היסטוריית מתן (${hist.length})</summary><ul class="hist">${hist.slice(0, 10).map(a => `<li${a.superseded_by ? ' style="opacity:.6"' : ''}><small class="num">${fDT(a.at)} · ${esc(uname(a.by))}${a.second_check_by ? ` · אימות: ${esc(uname(a.second_check_by))}` : ''}${a.allergy_ack ? ' · ⚠ אושרה אזהרת רגישות' : ''}</small><div>${esc(a.indication_text || '')}</div>
+      ${a.superseded_by ? `<small><span class="chip">בוטל בתיקון</span> ${esc(fixOf(a)?.correction_reason || '')} · ${esc(uname(fixOf(a)?.by))} ${fDT(fixOf(a)?.at)}</small>`
+        : canRun ? (UI.open.prnfix === a.id ? `<span class="confirm">סיבת התיקון: <input id="prn-fix-reason" type="text" aria-label="סיבת התיקון"><button class="btn sm danger" data-act="prn-fix" data-id="${a.id}">שמירת תיקון</button><button class="btn sm" data-act="prn-fix-cancel">חזרה</button><span class="err" id="prn-fix-err"></span></span>` : `<button class="btn sm ghost" data-act="prn-fix-open" data-id="${a.id}">תיקון</button>`) : ''}</li>`).join('')}</ul></details>` : ''}
     ${canRun && o.active ? `<div style="margin-top:4px"><button class="btn sm" data-act="prn-give" data-o="${o.id}">מתן לפי הצורך</button></div>` : ''}`;
 }
 function medsActions(r) {
@@ -2670,12 +2681,24 @@ function fallEventField(v, r) {
     ${v ? '' : `<label class="cb"><input type="checkbox" name="open_event"> פתח אירוע חריג חדש (נפתח טופס האירוע עם הפרטים מהדיווח)</label>`}</fieldset>`;
 }
 const labOut = x => (x.low !== '' && x.low != null && +x.value < +x.low) || (x.high !== '' && x.high != null && +x.value > +x.high);
+const vSort = (a, b) => b.at.localeCompare(a.at) || String(b.created_at || b.at).localeCompare(String(a.created_at || a.at)); // a correction keeps the original time and sorts above it
+const liveVitals = rid => S.vitals.filter(v => v.resident_id === rid && !v.superseded_by).sort(vSort);
 function vitalsSection(r) {
-  const f = F('med_vitals', { type: '' });
-  const list = S.vitals.filter(v => v.resident_id === r.id && (!f.type || v.type === f.type)).sort((a, b) => b.at.localeCompare(a.at));
+  const f = F('med_vitals', { type: '' }), canFix = may('clinical.vitals');
+  const list = S.vitals.filter(v => v.resident_id === r.id && (!f.type || v.type === f.type)).sort(vSort);
   return `<div class="filters"><select data-ch="f" data-view="med_vitals" data-k="type" aria-label="סוג מדד">${opt('', 'כל המדדים', f.type)}${Object.entries(VITALS).map(([k, v]) => opt(k, v.name, f.type)).join('')}</select></div>
-  ${list.length ? `<div class="tbl"><table><thead><tr><th>זמן</th><th>מדד</th><th>ערך</th><th>נמדד ע״י</th></tr></thead><tbody>${list.map(v => `<tr><td class="n">${fDT(v.at)}</td><td>${VITALS[v.type].name} <small class="muted">${VITALS[v.type].unit}</small></td>
-    <td class="num">${VITALS[v.type].ok(v.value) ? esc(v.value) : `<b style="color:var(--danger)">${esc(v.value)} ⚠</b>`}</td><td>${esc(uname(v.by))}</td></tr>`).join('')}</tbody></table></div>` : empty('לא נמדדו מדדים', '')}`;
+  ${list.length ? `<div class="tbl"><table><thead><tr><th>זמן</th><th>מדד</th><th>ערך</th><th>נמדד ע״י</th>${canFix ? '<th></th>' : ''}</tr></thead><tbody>${list.map(v => `<tr id="rec-${v.id}" class="${v.superseded_by ? 'superseded' : ''}"><td class="n">${fDT(v.at)}</td><td>${VITALS[v.type].name} <small class="muted">${VITALS[v.type].unit}</small></td>
+    <td class="num">${v.superseded_by ? `<s>${esc(v.value)}</s>` : VITALS[v.type].ok(v.value) ? esc(v.value) : `<b style="color:var(--danger)">${esc(v.value)} ⚠</b>`}</td><td>${esc(uname(v.by))}${v.correction_of ? ` <small class="muted num">${fDT(v.created_at)}</small>` : ''}${corrTag(v)}</td>
+    ${canFix ? `<td>${v.superseded_by ? '' : `<button class="btn sm" data-act="vital-fix" data-id="${v.id}">תיקון</button>`}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : empty('לא נמדדו מדדים', '')}`;
+}
+function panelVitalfix(p) {
+  const v = byId(S.vitals, p.id); if (!v || v.superseded_by || !may('clinical.vitals')) return null; const r = res(v.resident_id), V = VITALS[v.type];
+  return `<div class="p-h"><div><h2>תיקון מדד – ${esc(V.name)}</h2><div class="meta">${esc(fullName(r))} · נמדד ${fDT(v.at)} ע״י ${esc(uname(v.by))}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
+  <div class="p-b"><form class="form" data-submit="vitalfix" data-id="${v.id}" autocomplete="off">
+    <p class="note-inline info" style="margin:0">הערך המקורי (<b class="num">${esc(v.value)}</b>) נשמר ומסומן "הוחלף ע״י תיקון". הערך המתוקן נרשם לאותה שעת מדידה.</p>
+    ${fld(`ערך מתוקן (${V.unit})`, `<input name="value" type="text" inputmode="decimal" placeholder="${V.ph}" value="${esc(v.value)}" autofocus>`, 'value', 1)}
+    ${fld('סיבת התיקון', '<textarea name="correction_reason"></textarea>', 'correction_reason', 1)}
+    <div class="actions"><button class="btn pri">שמירת תיקון</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
 }
 function fileEditActions(tab, editing) {
   if (!TAB_EDIT[tab] || !may(TAB_EDIT[tab])) return '';
@@ -2705,6 +2728,9 @@ function viewMedicalFile() {
     <section class="card mcontent" aria-label="${esc(def.name)}"><div class="msec-h"><h2>${esc(def.name)}</h2><span class="sp"></span><div class="actions no-print">${actions}</div></div>${body}</section>
   </div>`;
 }
+/* R13 (D2, D14, D15): locked records are never edited; a correction is a new linked record and the original only gains superseded_by */
+const corrTag = x => x.superseded_by ? `<br><span class="chip">הוחלף ע״י תיקון</span> <button class="linkbtn" data-act="rec-jump" data-id="${esc(x.superseded_by)}">לתיקון</button>`
+  : x.correction_of ? `<br><span class="chip blue">תיקון של <button class="linkbtn" data-act="rec-jump" data-id="${esc(x.correction_of)}">${esc(x.correction_of)}</button></span><br><small class="muted">סיבה: ${esc(x.correction_reason || '')}</small>` : '';
 /* generic list for engine sections: filters, newest first, author + time, edit per row */
 function medList(r, sec) {
   const def = MED_SECTIONS[sec], fdef = {}; for (const x of def.filters || []) fdef[x.k] = x.def ?? '';
@@ -2716,8 +2742,8 @@ function medList(r, sec) {
     : `<select data-ch="f" data-view="med_${sec}" data-k="${x.k}" aria-label="${esc(x.label)}">${opt('', x.label, f[x.k])}${Object.entries(typeof x.opts === 'function' ? x.opts(r) : x.opts).map(([k, v]) => opt(k, v, f[x.k])).join('')}</select>`).join('');
   return `${filters ? `<div class="filters">${filters}</div>` : ''}
   ${list.length ? `<div class="tbl"><table><thead><tr>${def.cols.map(c => `<th>${c.label}</th>`).join('')}<th>נרשם ע״י</th>${canW ? '<th></th>' : ''}</tr></thead><tbody>
-  ${list.map(x => `<tr class="${def.rowCls ? def.rowCls(x) : ''}">${def.cols.map(c => `<td>${c.td(x)}</td>`).join('')}<td><small>${esc(uname(x.by))}<br><span class="muted num">${fDT(x.created_at)}</span>${x.updated_at && x.updated_at !== x.created_at ? `<br><span class="muted">עודכן ${esc(uname(x.updated_by))} ${fDT(x.updated_at)}</span>` : ''}</small></td>
-    ${canW ? `<td style="white-space:nowrap"><button class="btn sm" data-act="medrec-edit" data-sec="${sec}" data-id="${x.id}">עריכה</button>${def.removable ? (UI.confirm === 'medrm:' + x.id ? ` <span class="confirm">להסיר? <button class="btn sm danger" data-act="medrec-del" data-sec="${sec}" data-id="${x.id}">הסרה</button><button class="btn sm" data-act="confirm-cancel">ביטול</button></span>` : ` <button class="btn sm" data-act="confirm" data-key="medrm:${x.id}">הסרה</button>`) : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : empty('אין רשומות להצגה', canW ? 'לחצו "הוספה" כדי להוסיף.' : '')}`;
+  ${list.map(x => `<tr id="rec-${x.id}" class="${def.rowCls ? def.rowCls(x) : ''}${x.superseded_by ? ' superseded' : ''}">${def.cols.map(c => `<td>${c.td(x)}</td>`).join('')}<td><small>${esc(uname(x.by))}<br><span class="muted num">${fDT(x.created_at)}</span>${x.updated_at && x.updated_at !== x.created_at && !def.lock ? `<br><span class="muted">עודכן ${esc(uname(x.updated_by))} ${fDT(x.updated_at)}</span>` : ''}</small>${corrTag(x)}</td>
+    ${canW ? `<td style="white-space:nowrap">${def.lock ? (x.superseded_by ? '' : `<button class="btn sm" data-act="medrec-fix" data-sec="${sec}" data-id="${x.id}">תיקון</button>`) : `<button class="btn sm" data-act="medrec-edit" data-sec="${sec}" data-id="${x.id}">עריכה</button>`}${def.removable ? (UI.confirm === 'medrm:' + x.id ? ` <span class="confirm">להסיר? <button class="btn sm danger" data-act="medrec-del" data-sec="${sec}" data-id="${x.id}">הסרה</button><button class="btn sm" data-act="confirm-cancel">ביטול</button></span>` : ` <button class="btn sm" data-act="confirm" data-key="medrm:${x.id}">הסרה</button>`) : ''}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : empty('אין רשומות להצגה', canW ? 'לחצו "הוספה" כדי להוסיף.' : '')}`;
 }
 function medField(fd, v, r) {
   const name = fd.k, o = typeof fd.opts === 'function' ? fd.opts(r) : fd.opts;
@@ -2738,16 +2764,21 @@ function medField(fd, v, r) {
 function panelMedrec(p) {
   const def = MED_SECTIONS[p.sec]; if (!def || !may('clinical.view')) return null;
   const x = p.id && (S.clin[def.coll] || []).find(y => y.id === p.id), r = res(x ? x.resident_id : p.rid); if (!r || !may(def.write)) return null;
+  const corr = !!(p.correct && x && def.lock); if (x && def.lock && (!corr || x.superseded_by)) return null; // locked: only a correction of the newest version
   const v = x || (def.defaults ? def.defaults(r) : {});
-  return `<div class="p-h"><div><h2>${esc(def.name)} – ${x ? 'עריכה' : 'רשומה חדשה'}</h2><div class="meta">${esc(fullName(r))} · דירה ${esc(r.apartment)}${x ? ` · נרשם ע״י ${esc(uname(x.by))} ${fDT(x.created_at)}` : ''}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
-  <div class="p-b"><form class="form" data-submit="medrec" data-sec="${p.sec}" data-id="${x ? x.id : ''}" data-rid="${r.id}" autocomplete="off">
+  return `<div class="p-h"><div><h2>${esc(def.name)} – ${corr ? 'תיקון' : x ? 'עריכה' : 'רשומה חדשה'}</h2><div class="meta">${esc(fullName(r))} · דירה ${esc(r.apartment)}${x ? ` · נרשם ע״י ${esc(uname(x.by))} ${fDT(x.created_at)}` : ''}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
+  <div class="p-b"><form class="form" data-submit="medrec" data-sec="${p.sec}" data-id="${x ? x.id : ''}" data-rid="${r.id}" ${corr ? 'data-correct="1"' : ''} autocomplete="off">
+    ${corr ? `<p class="note-inline info" style="margin:0">הרשומה ${esc(x.id)} נעולה. השמירה יוצרת רשומת תיקון חדשה; המקור נשאר כמו שהוא ומסומן "הוחלף ע״י תיקון".</p>${fld('סיבת התיקון', '<textarea name="correction_reason" autofocus></textarea>', 'correction_reason', 1)}` : ''}
     ${def.fields.map(fd => medField(fd, v[fd.k], r)).join('')}
     <div class="actions"><button class="btn pri">שמירה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
 }
 function saveMedrec(form) {
   const def = MED_SECTIONS[form.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT);
-  const coll = S.clin[def.coll], x = form.dataset.id && coll.find(y => y.id === form.dataset.id), r = res(form.dataset.rid);
+  const coll = S.clin[def.coll], x = form.dataset.id && coll.find(y => y.id === form.dataset.id), r = res(form.dataset.rid), corr = form.dataset.correct === '1';
+  if (x && def.lock && !corr) return toast('הרשומה נעולה אחרי השמירה. לשינוי לחצו "תיקון".');
+  if (corr && (!x || !def.lock || x.superseded_by)) return toast('אפשר לתקן רק את הגרסה האחרונה של רשומה נעולה');
   const d = readForm(form), e = {};
+  if (corr && !d.correction_reason) e.correction_reason = 'שדה חובה';
   for (const fd of def.fields) {
     if (fd.type === 'custom') { if (fd.read) d[fd.k] = fd.read(form); continue; }
     const hidden = fd.when && form.querySelector(`[name="${fd.k}"],[name="${fd.k}__d"],[name="${fd.k}[]"]`)?.closest('[hidden]'); if (hidden && fd.type === 'time') delete form._bad[fd.k]; if (hidden) { d[fd.k] = fd.type === 'bool' ? false : fd.type === 'multi' ? [] : ''; continue; }
@@ -2759,7 +2790,9 @@ function saveMedrec(form) {
   if (!showErrors(form, e)) return;
   const data = {}; for (const fd of def.fields) { let val = d[fd.k]; if (fd.type === 'datetime') val = val ? wallToIso(val) : ''; if (fd.type === 'number') val = val === '' ? '' : +val; if (fd.type === 'bool') val = !!val; data[fd.k] = val; }
   let rec;
-  if (x) { Object.assign(x, data); stamp(x); rec = x; toast('הרשומה עודכנה'); }
+  if (corr) { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: x.resident_id, ...data, by: me().id, correction_of: x.id, correction_reason: d.correction_reason }, true); coll.push(rec); x.superseded_by = rec.id; closePanel(); refresh(); return toast('התיקון נשמר. הרשומה המקורית נשמרה ומסומנת כמוחלפת'); }
+  if (x) { const prev = {}; for (const k of Object.keys(data)) if (JSON.stringify(x[k] ?? '') !== JSON.stringify(data[k] ?? '')) prev[k] = x[k] ?? ''; // editable sections keep history[]
+    if (Object.keys(prev).length) (x.history ||= []).push({ at: nowIso(), by: me().id, prev }); Object.assign(x, data); stamp(x); rec = x; toast('הרשומה עודכנה'); }
   else { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: r.id, ...data, by: me().id }, true); coll.push(rec); toast('הרשומה נשמרה'); }
   closePanel();
   if (def.after) def.after(rec, !x, d);
@@ -2869,7 +2902,7 @@ function saveProspectFu(form) {
 }
 
 const VIEWS = { prospects: () => viewProspects(false), catalog: viewCatalog, home: viewHome, cat: viewCat, round: viewRound, residents: viewResidents, resident: viewResidentFile, movements: viewMovements, handover: viewHandover, calls: viewCalls, events: viewEvents, meds: viewMeds, reports: viewReports, settings: viewSettings };
-const PANELS = { prngive: panelPrnGive, medorder: panelMedOrder, medhandling: panelMedHandling, intake: panelIntake, medrec: panelMedrec, prospect: panelProspect, contactlog: panelContactLog, res: panelResident, move: panelMove, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
+const PANELS = { prngive: panelPrnGive, medorder: panelMedOrder, medhandling: panelMedHandling, intake: panelIntake, medrec: panelMedrec, vitalfix: panelVitalfix, prospect: panelProspect, contactlog: panelContactLog, res: panelResident, move: panelMove, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
 
 /* ================================================================
    Event wiring: clicks, inputs, changes, submits, keyboard, routing
@@ -2960,9 +2993,13 @@ const ACT = {
   'intake-open': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); const sel = medF().sel.filter(id => byId(S.med_orders, id)?.active); if (!sel.length) return toast('בחרו לפחות הוראה פעילה אחת לבדיקת נטילה'); openPanel({ type: 'intake', rid: el.dataset.rid, ids: sel }); },
   'medrec-new': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, rid: el.dataset.rid }); },
   'mtask-add': () => { $('#mtask-rows').insertAdjacentHTML('beforeend', $('#mtask-tpl').innerHTML); $('#mtask-rows [data-trow]:last-child input')?.focus(); },
-  'mtask-done': el => { if (!may('clinical.edit')) { el.checked = !el.checked; return toast(NO_PERM_ACT); } const x = S.clin.meetings.find(y => y.id === el.dataset.id), t = x?.tasks[+el.dataset.i]; if (!t) return; t.done = el.checked; t.done_by = me().id; t.done_at = nowIso(); stamp(x); refresh(); },
+  'mtask-done': el => { if (!may('clinical.edit')) { el.checked = !el.checked; return toast(NO_PERM_ACT); } const x = S.clin.meetings.find(y => y.id === el.dataset.id), t = x?.tasks[+el.dataset.i]; if (!t || x.superseded_by) return; // allowed on a locked meeting (D14), audited in task_log
+    t.done = el.checked; t.done_by = me().id; t.done_at = nowIso(); (x.task_log ||= []).push({ at: t.done_at, by: me().id, i: +el.dataset.i, text: t.text, done: t.done }); refresh(); },
+  'medrec-fix': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !def.lock || !may(def.write)) return toast(NO_PERM_ACT); const x = S.clin[def.coll].find(y => y.id === el.dataset.id); if (!x || x.superseded_by) return; openPanel({ type: 'medrec', sec: el.dataset.sec, id: x.id, correct: true }); },
+  'rec-jump': el => { const t = $('#rec-' + el.dataset.id); if (!t) return toast('הרשומה מוסתרת בסינון הנוכחי'); t.scrollIntoView({ block: 'center', behavior: 'smooth' }); t.classList.add('flash'); setTimeout(() => t.classList.remove('flash'), 1600); },
+  'vital-fix': el => { if (!may('clinical.vitals')) return toast(NO_PERM_ACT); const v = byId(S.vitals, el.dataset.id); if (!v || v.superseded_by) return; openPanel({ type: 'vitalfix', id: v.id }); },
   'medrec-del': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !def.removable || !may(def.write)) return toast(NO_PERM_ACT); const x = S.clin[def.coll].find(y => y.id === el.dataset.id); if (!x) return; x.removed = { at: nowIso(), by: me().id }; stamp(x); UI.confirm = null; refresh(); toast('הרשומה הוסרה (נשמרת בהיסטוריה)'); },
-  'medrec-edit': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, id: el.dataset.id }); },
+  'medrec-edit': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || def.lock || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, id: el.dataset.id }); },
   'new-prospect': () => { if (!may('prospects.create')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); openPanel({ type: 'prospect' }); },
   'open-prospect': el => openPanel({ type: 'prospect', id: el.dataset.id }),
   'pr-status': el => { UI.f.prospects.status = UI.f.prospects.status === el.dataset.v ? '' : el.dataset.v; renderMain(); },
@@ -3016,7 +3053,10 @@ const ACT = {
   },
   'dose-undo-open': el => { UI.open.undo = el.dataset.k; UI.open.ng = null; renderMain(); setTimeout(() => $('#dose-undo-reason')?.focus(), 0); },
   'dose-undo-cancel': () => { UI.open.undo = null; renderMain(); },
-  'dose-undo': el => { if (!may('meds.run')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); const reason = reqVal('#dose-undo-reason', '#dose-undo-err'); if (!reason) return; const a = doseRec(el.dataset.o, today(), el.dataset.t); if (!a) return; a.history.push({ status: a.status, at: a.at, by: a.by }); Object.assign(a, { status: 'undone', undo_reason: reason, undone_at: nowIso(), undone_by: me().id }); UI.open.undo = null; save(); renderMain(); toast('הסימון בוטל'); },
+  'dose-undo': el => { if (!may('meds.run')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); const reason = reqVal('#dose-undo-reason', '#dose-undo-err'); if (!reason) return; const a = doseRec(el.dataset.o, today(), el.dataset.t); if (!a) return; voidRow(a, reason); UI.open.undo = null; save(); renderMain(); toast('הסימון תוקן – המקור נשמר, אפשר לסמן מחדש'); },
+  'prn-fix-open': el => { UI.open.prnfix = el.dataset.id; renderMain(); setTimeout(() => $('#prn-fix-reason')?.focus(), 0); },
+  'prn-fix-cancel': () => { UI.open.prnfix = null; renderMain(); },
+  'prn-fix': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); const reason = reqVal('#prn-fix-reason', '#prn-fix-err'); if (!reason) return; const a = byId(S.med_admin, el.dataset.id); if (!a || !a.prn || a.status !== 'given' || a.superseded_by) return; voidRow(a, reason); UI.open.prnfix = null; save(); renderMain(); toast('מתן לפי הצורך תוקן – המקור נשמר'); },
   'prn-give': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); openPanel({ type: 'prngive', oid: el.dataset.o }); },
   vitals: el => { if (!mayVitals()) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); openPanel({ type: 'vitals', rid: el.dataset.rid }); },
   // reports
@@ -3145,6 +3185,16 @@ const SUB = {
     stamp(e); refresh(); toast('הבדיקה נשמרה');
   },
   'ev-addendum': form => { const d = readForm(form); if (!d.text) return; const e = byId(S.events, form.dataset.id); e.addenda.push({ text: d.text, at: nowIso(), by: me().id }); stamp(e); refresh(); },
+  vitalfix: form => {
+    if (!may('clinical.vitals')) return toast(NO_PERM_ACT);
+    const v = byId(S.vitals, form.dataset.id); if (!v || v.superseded_by) return toast('אפשר לתקן רק את הגרסה האחרונה של המדידה');
+    const d = readForm(form), e = {};
+    if (!d.value) e.value = 'שדה חובה'; else if (v.type === 'bp' ? !/^[0-9]{2,3}[/][0-9]{2,3}$/.test(d.value) : isNaN(+d.value)) e.value = v.type === 'bp' ? 'בפורמט 120/80' : 'מספר בלבד';
+    if (!d.correction_reason) e.correction_reason = 'שדה חובה';
+    if (!showErrors(form, e)) return;
+    const n = { id: uid('V'), resident_id: v.resident_id, type: v.type, value: d.value, at: v.at, by: me().id, created_at: nowIso(), correction_of: v.id, correction_reason: d.correction_reason };
+    S.vitals.push(n); v.superseded_by = n.id; closePanel(); refresh(); toast('המדד תוקן. המדידה המקורית נשמרה');
+  },
   vitals: form => {
     if (!mayVitals()) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
     const d = readForm(form), r = res(form.dataset.rid), e = {}; const t = nowIso(); let n = 0;
@@ -3192,7 +3242,7 @@ document.addEventListener('keydown', ev => {
     if (ev.key === 'Escape') { ev.target.value = ''; box.hidden = true; ev.target.blur(); return; }
   }
   if (ev.key === 'Escape' && UI.modal) { closeModal(true); return; }
-  if (ev.key === 'Escape') { if (UI.confirm) { UI.confirm = null; renderMain(); renderPanel(); } else if (UI.open.visit || UI.open.ng || UI.open.undo || UI.open.adm || UI.open.ack) { UI.open.visit = UI.open.ng = UI.open.undo = UI.open.adm = UI.open.ack = null; renderMain(); } else if (UI.panel) closePanel(); return; }
+  if (ev.key === 'Escape') { if (UI.confirm) { UI.confirm = null; renderMain(); renderPanel(); } else if (UI.open.visit || UI.open.ng || UI.open.undo || UI.open.adm || UI.open.ack || UI.open.prnfix) { UI.open.visit = UI.open.ng = UI.open.undo = UI.open.adm = UI.open.ack = UI.open.prnfix = null; renderMain(); } else if (UI.panel) closePanel(); return; }
   if (ev.key === '/' && !typing && me()) { ev.preventDefault(); $('#gq')?.focus(); return; }
   if (ev.altKey && /^[0-9]$/.test(ev.key) && me()) { const n = navShortcuts()[ev.key === '0' ? 9 : +ev.key - 1]; if (n) { ev.preventDefault(); go('#/' + n.id); } }
   if (ev.key === 'Enter' && ev.target.id === 'undo-reason') { ev.preventDefault(); $('[data-act="undo-loc"]')?.click(); }
