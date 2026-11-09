@@ -878,6 +878,9 @@ function seed() {
   D.settings = { shifts: { morning: '07:00', evening: '15:00', night: '23:00' }, round_evening_from: '14:00', functional_levels: ['עצמאי', 'תשוש', 'סיעודי', 'תשוש נפש'], functional_levels_off: [], doctors: ['ד״ר לדוגמה א׳', 'ד״ר לדוגמה ב׳', 'ד״ר בדיקה ג׳'] };
   // a few intake (compliance) checks on chronic orders
   D.med_orders.filter(o => o.active && o.kind === 'chronic').filter((_, i) => i % 9 === 0).forEach((o, i) => { const t = ago(60 * (20 + i * 31)); D.clin.intake.push({ id: 'IC' + (i + 1), resident_id: o.resident_id, order_ids: [o.id], at: t, by: i % 2 ? 'U2' : 'U3', result: ['taken', 'taken', 'partial', 'not_taken'][i % 4], note: i % 4 === 2 ? 'נטל/ה חלק מהמנה' : i % 4 === 3 ? 'הכדור נמצא על השולחן' : '', created_by: i % 2 ? 'U2' : 'U3', created_at: t, updated_by: i % 2 ? 'U2' : 'U3', updated_at: t }); });
+  D.residents.forEach((r, i) => { r.height_cm = (r.gender === 'F' ? 150 : 163) + (i * 7) % 17; }); // D19, plausible and fictitious
+  for (const k of ASMT_IDS) D.clin[k] = [];
+  seedAssessments(D);
   D.rounds = [];
   return D;
 }
@@ -911,6 +914,26 @@ function seedActivity() {
       a.superseded_by = v.id; S.med_admin.push(v, { id: uid('MA'), order_id: a.order_id, date: a.date, time: a.time, status: 'not_given', reason: 'ישן', note: 'סומן מחדש אחרי תיקון', at: iso(new Date(Date.parse(vt) + 60000)), by: 'U3', history: [] }); } }
 }
 
+/* R15 seed: 12 residents with 1–2 entries per assessment type; R+0 morse and R+1 norton are overdue (D20) */
+function seedAssessments(D) {
+  D.residents.filter(r => !isGone(r)).filter((_, i) => i % 5 === 0).slice(0, 12).forEach((r, i) => {
+    const push = (sec, daysAgo, ans, by) => { const t = ago(60 * 24 * daysAgo + 60 * (2 + i % 6)), data = { at: t, ...ans, notes: '' }; Object.assign(data, asmtCompute(sec, data));
+      D.clin[sec].push({ id: MED_SECTIONS[sec].prefix + (D.clin[sec].length + 1), resident_id: r.id, ...data, by, created_by: by, created_at: t, updated_by: by, updated_at: t }); };
+    const by = i % 2 ? 'U2' : 'U3', two = i % 2 === 0, recent = 1 + i % 5;
+    const nort = lv => Object.fromEntries(NORTON_ITEMS.map((it, j) => [it.k, String(Math.max(1, Math.min(4, lv - ((i + j) % 2))))]));
+    if (two) push('norton', 45 + i, nort(4), 'U3');
+    push('norton', i === 1 ? 10 : recent, i === 1 ? nort(2) : nort(4 - i % 3), by);
+    const morse = hi => ({ history: hi ? '25' : '0', secondary: i % 3 ? '15' : '0', aid: hi ? '15' : '0', iv: '0', gait: hi ? '10' : '0', mental: '0' });
+    if (two) push('morse', 50 + i, morse(false), 'U3');
+    push('morse', i === 0 ? 35 : recent, morse(i % 4 === 1), by);
+    if (two) push('pain', 20 + i, { tool: 'nrs', nrs: '2' }, 'U3');
+    push('pain', i === 3 ? 0 : recent, i % 3 === 2 ? { tool: 'painad', p_breathing: '0', p_vocal: '1', p_face: '1', p_body: '0', p_console: '0' } : { tool: 'nrs', nrs: i === 3 ? '5' : String(i % 4) }, by);
+    const w = (r.gender === 'F' ? 52 : 64) + (i * 9) % 30;
+    if (two) push('bmi', 60 + i, { weight: w + 2, height_cm: r.height_cm }, 'U3');
+    push('bmi', recent, { weight: w, height_cm: r.height_cm }, by);
+    D.vitals.push({ id: uid('V'), resident_id: r.id, type: 'weight', value: String(w), at: ago(60 * 24 * recent + 60 * (2 + i % 6) + 5), by });
+  });
+}
 /* two prior signed controlled-drug counts (R12), one with a discrepancy; run after the seeded doses */
 function seedControlledCounts() {
   const ccSeed = (minAgo, outBy, inBy, off = {}) => {
@@ -924,7 +947,7 @@ function seedControlledCounts() {
 /* ---------- storage ---------- */
 let S = null;
 function load() {
-  try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const d = JSON.parse(raw); if (d && d.version === SCHEMA_VERSION) { S = d; return; } } } catch (e) { /* fall through to reseed */ }
+  try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const d = JSON.parse(raw); if (d && d.version === SCHEMA_VERSION) { S = d; for (const k of ASMT_IDS) S.clin[k] ||= []; return; } } } catch (e) { /* fall through to reseed */ }
   reseed();
 }
 function reseed() { S = seed(); seedActivity(); seedControlledCounts(); save(); }
@@ -1206,6 +1229,7 @@ function applyWhen(form) {
     let v = ctl.type === 'checkbox' ? (ctl.checked ? 'on' : 'off') : ctl.type === 'radio' ? (form.querySelector(`[name="${name}"]:checked`)?.value || '') : ctl.value;
     el.hidden = !vals.split('|').includes(v);
   }
+  if (form.dataset.asmt) asmtLive(form);
 }
 function applyWhenAll(root = document) { for (const f of $$('form', root)) applyWhen(f); }
 /* dates are typed as dd/mm/yyyy and times as 24h HH:MM, whatever the browser locale */
@@ -1512,7 +1536,7 @@ function fileTabs(r) {
     { id: 'events', name: 'אירועים' }, { id: 'nursing', name: 'סיעוד ותרופות', perm: 'clinical.view' }].filter(t => !t.perm || may(t.perm));
 }
 // a resident file opened inside a category shows only that category's sections
-const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'followup', 'contacts', 'movements', 'vaccines', 'medreport', 'nursereport', 'fall', 'sos', 'service', 'diagnoses', 'injections', 'allergies', 'vitals', 'meds', 'labs', 'meetings', 'events', 'tests', 'referrals'] }; // medical grows with each R7 commit, in menu order
+const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'followup', 'contacts', 'movements', 'vaccines', 'medreport', 'nursereport', 'fall', 'sos', 'service', 'diagnoses', 'injections', 'allergies', 'vitals', 'norton', 'morse', 'pain', 'bmi', 'meds', 'labs', 'meetings', 'events', 'tests', 'referrals'] }; // medical grows with each R7 commit, in menu order
 const fileCtx = () => UI.route === 'cat' ? { cat: UI.params[0], rid: UI.params[1], tab: UI.params[2] } : { cat: null, rid: UI.params[0], tab: UI.params[1] };
 const fileDefaultTab = ctx => ctx.cat ? CAT_SECTIONS[ctx.cat][0] : 'personal';
 const fileHref = (ctx, rid, tab) => ctx.cat ? `#/cat/${ctx.cat}/${rid}/${tab}` : `#/resident/${rid}/${tab}`;
@@ -1552,7 +1576,7 @@ function tabPersonal(r, ed) {
       <dt>כניסה לדיור</dt><dd class="num">${admissionDate(r) ? `${fD(admissionDate(r))} (ותק ${tenureTxt(admissionDate(r))})` : '—'}</dd><dt>תחילת טיפול</dt><dd class="num">${fD(r.treatment_start || admissionDate(r)) || '—'}</dd><dt>גורם מתקצב</dt><dd>${esc(r.funding_source) || '—'}</dd></dl>
     <dl class="kv"><dt>גר לבד</dt><dd>${r.living.lives_alone ? 'כן <span class="chip ok">בסבב בוקר וערב</span>' : `לא – ${esc(ARR[r.living.arrangement] || '—')} <span class="chip">בסבב בוקר בלבד</span>`}</dd>
       <dt>דירה</dt><dd>${esc(r.apartment)} · ${esc(unitOf(r).label)}</dd><dt>סטטוס</dt><dd>${statusChip(r)} <span class="hint">(משתנה דרך תנועות)</span></dd>
-      <dt>מצב תפקודי</dt><dd>${esc(nursingNow(r))}</dd><dt>היסטוריית מצב תפקודי</dt><dd>${r.nursing_level.map(n => `${esc(n.level)} מ-${fD(n.from)}`).join(' ← ')}</dd>
+      <dt>מצב תפקודי</dt><dd>${esc(nursingNow(r))}</dd>${clin ? `<dt>גובה</dt><dd class="num">${r.height_cm ? esc(r.height_cm) + ' ס״מ' : '—'} <span class="hint">(מתעדכן מאומדן BMI)</span></dd>` : ''}<dt>היסטוריית מצב תפקודי</dt><dd>${r.nursing_level.map(n => `${esc(n.level)} מ-${fD(n.from)}`).join(' ← ')}</dd>
       <dt>סבבים</dt><dd>${pref ? `<span class="chip vio">לא לאיתור</span> ${esc(pref.reason)}${pref.to ? ` (עד ${fD(pref.to)})` : ''}` : 'נבדק/ת בסבבים'}</dd>
       ${clin ? `<dt>רגישויות</dt><dd>${allergyNames(r).length ? `<span class="chip red">${esc(allergyNames(r).join(', '))}</span>` : 'לא ידוע על רגישויות'}</dd>` : ''}</dl></div>${audit(r)}`;
   return `<form class="form" id="file-form" data-submit="file-save" data-dirty="1" novalidate>
@@ -2402,7 +2426,13 @@ function viewCat() {
   const quick = c.id === 'admin' ? [['round', 'סבב', 'rounds.run'], ['calls', 'קריאות שירות', 'calls.view'], ['movements', 'תנועות', 'mov.view']].filter(q => may(q[2])).map(([id, name]) => `<a class="btn sm" href="#/${id}">${name}</a>`).join('')
     : c.id === 'medical' && may('catalog.view') ? `<a class="btn sm" href="#/catalog">${ic('pill')} רשימת תרופות (הדגמה)</a>` : '';
   if (c.id === 'marketing') return catStrip(c) + viewProspects(true);
-  return catStrip(c, `<span class="sp"></span>${quick}`) + (CAT_SECTIONS[c.id] ? catResidents(c) : '');
+  return catStrip(c, `<span class="sp"></span>${quick}`) + (c.id === 'medical' && may('clinical.view') ? asmtOverdueList() : '') + (CAT_SECTIONS[c.id] ? catResidents(c) : '');
+}
+function asmtOverdueList() { // D20: compact list above the residents list, no tile badge
+  const rows = S.residents.filter(r => !isGone(r)).map(r => [r, asmtOverdue(r)]).filter(([, l]) => l.length).sort((a, b) => sortApt(a[0], b[0]));
+  if (!rows.length) return '';
+  return `<section class="card pad" aria-label="אומדנים באיחור" style="margin-bottom:12px"><h2 style="margin:0 0 6px;font-size:17px">אומדנים באיחור <span class="chip warn">${rows.length}</span></h2><ul class="hist" style="margin:0">
+    ${rows.map(([r, l]) => `<li><a href="#/cat/medical/${r.id}"><b>${esc(fullName(r))}</b></a> <small class="muted">דירה ${esc(r.apartment)}</small> · ${l.map(s => `<a href="#/cat/medical/${r.id}/${s}">${esc(ASMT[s].short)}</a> <small class="muted num">(היה מתוכנן ל-${fD(asmtLatest(s, r.id).next_due)})</small>`).join(' · ')}</li>`).join('')}</ul></section>`;
 }
 function catResidents(c) {
   const view = 'cat_' + c.id, f = F(view, { q: '', status: 'current', sw: '', sort: 'name', dir: 1 });
@@ -2430,6 +2460,53 @@ function catResidents(c) {
    ================================================================ */
 const NO_PERM_ACT = 'אין הרשאה לפעולה הזו בתפקיד הנוכחי';
 const clinOf = (coll, rid) => (S.clin[coll] || []).filter(x => x.resident_id === rid);
+/* R15 (D1, D18, D19, D20): four light nursing assessments (הדגמה). Score, band and next_due are computed, never typed */
+const scoreOpts = (labels, vals) => Object.fromEntries(labels.map((l, i) => [String(vals ? vals[i] : i + 1), `${vals ? vals[i] : i + 1} – ${l}`]));
+const NORTON_ITEMS = [['physical', 'מצב גופני', ['גרוע מאוד', 'גרוע', 'סביר', 'טוב']], ['mental', 'מצב הכרה', ['חסר/ת תגובה', 'מבולבל/ת', 'אדיש/ה', 'ער/ה']],
+  ['activity', 'פעילות', ['מרותק/ת למיטה', 'מרותק/ת לכיסא', 'הולך/ת בעזרה', 'הולך/ת לבד']], ['mobility', 'ניידות', ['ללא תנועה', 'מוגבלת מאוד', 'מוגבלת מעט', 'מלאה']],
+  ['incontinence', 'שליטה בסוגרים', ['שתן וצואה', 'בדרך כלל שתן', 'לעיתים', 'שליטה מלאה']]].map(([k, label, l]) => ({ k, label, type: 'select', opts: scoreOpts(l), req: 1 }));
+const MORSE_ITEMS = [['history', 'היסטוריה של נפילות (3 חודשים אחרונים)', ['לא', 'כן'], [0, 25]], ['secondary', 'אבחנה משנית', ['לא', 'כן'], [0, 15]],
+  ['aid', 'עזר הליכה', ['ללא / במיטה / עזרת צוות', 'קביים / מקל / הליכון', 'נשען/ת על רהיטים'], [0, 15, 30]], ['iv', 'עירוי / וריד פתוח', ['לא', 'כן'], [0, 20]],
+  ['gait', 'הליכה', ['תקינה / במיטה / כיסא גלגלים', 'חלשה', 'לקויה'], [0, 10, 20]], ['mental', 'מצב מנטלי', ['מודע/ת למגבלות', 'שוכח/ת את המגבלות'], [0, 15]]]
+  .map(([k, label, l, v]) => ({ k, label, type: 'select', opts: scoreOpts(l, v), req: 1 }));
+const PAINAD_ITEMS = [['p_breathing', 'נשימה', ['תקינה', 'מאומצת לסירוגין', 'רועשת ומאומצת']], ['p_vocal', 'קולות שליליים', ['אין', 'גניחה מדי פעם', 'קריאות / בכי חוזרים']],
+  ['p_face', 'הבעת פנים', ['רגועה', 'עצובה / מפוחדת', 'מעוותת']], ['p_body', 'שפת גוף', ['רגועה', 'מתוחה / חסרת מנוחה', 'נוקשה / אגרופים']], ['p_console', 'יכולת הרגעה', ['לא נדרשת', 'נרגע/ת במגע או בדיבור', 'לא ניתן/ת להרגעה']]]
+  .map(([k, label, l]) => ({ k, label, type: 'select', opts: scoreOpts(l, [0, 1, 2]), req: 1, when: 'tool:painad' }));
+const ASMT_IDS = ['norton', 'morse', 'pain', 'bmi'];
+const sumOf = (d, items) => { const v = items.map(it => d[it.k]); return v.some(x => x === '' || x == null) ? null : v.reduce((a, x) => a + +x, 0); };
+const ASMT = {
+  norton: { short: 'נורטון', max: 20, calc: d => { const s = sumOf(d, NORTON_ITEMS); if (s == null) return null; const b = s >= 15 ? 'נמוך' : s >= 13 ? 'בינוני' : 'גבוה'; return { score: s, band: b, days: { 'גבוה': 7, 'בינוני': 14, 'נמוך': 30 }[b] }; } },
+  morse: { short: 'נפילות (מורס)', max: 125, calc: d => { const s = sumOf(d, MORSE_ITEMS); if (s == null) return null; const b = s >= 45 ? 'גבוה' : s >= 25 ? 'בינוני' : 'נמוך'; return { score: s, band: b, days: b === 'גבוה' ? 7 : 30 }; } },
+  pain: { short: 'כאב', max: 10, calc: d => { const s = d.tool === 'nrs' ? (d.nrs === '' || d.nrs == null ? null : +d.nrs) : d.tool === 'painad' ? sumOf(d, PAINAD_ITEMS) : null; if (s == null) return null;
+    return { score: s, band: s === 0 ? 'ללא' : s <= 3 ? 'קל' : s <= 6 ? 'בינוני' : 'חזק', days: s >= 4 ? 1 : 7 }; } },
+  bmi: { short: 'BMI', calc: d => { const w = +d.weight, h = +d.height_cm; if (!w || !h || isNaN(w) || isNaN(h)) return null; const s = Math.round(w / (h / 100) ** 2 * 10) / 10;
+    return { score: s, band: s < 18.5 ? 'תת-משקל' : s < 25 ? 'תקין' : s < 30 ? 'עודף משקל' : 'השמנה', days: 30 }; } },
+};
+const BAND_CHIP = { 'גבוה': 'red', 'חזק': 'red', 'השמנה': 'red', 'בינוני': 'warn', 'עודף משקל': 'warn', 'תת-משקל': 'warn', 'נמוך': 'ok', 'קל': 'ok', 'ללא': 'ok', 'תקין': 'ok' };
+const bandChip = (sec, b) => `<span class="chip ${BAND_CHIP[b] || ''}">${sec === 'norton' || sec === 'morse' ? 'סיכון ' : ''}${esc(b)}</span>`;
+const asmtCompute = (sec, d) => { const c = ASMT[sec].calc(d); if (!c) return null; const day = String(d.at || '').slice(0, 10); return { score: c.score, band: c.band, next_due: addDays(/^[0-9]{4}-/.test(day) ? dkey(d.at) : today(), c.days) }; };
+const asmtLatest = (sec, rid) => clinOf(sec, rid).filter(x => !x.superseded_by).sort((a, b) => b.at.localeCompare(a.at))[0];
+// D20: overdue = the newest non-superseded entry is past next_due; residents with no entry of that type are not flagged
+const asmtOverdue = r => ASMT_IDS.filter(sec => { const x = asmtLatest(sec, r.id); return x && x.next_due < today(); });
+const latestWeight = rid => liveVitals(rid).find(v => v.type === 'weight');
+function asmtLive(form) {
+  const sec = form.dataset.asmt, out = form.querySelector('#asmt-live'); if (!out || !ASMT[sec]) return;
+  const d = readForm(form); let c = null; try { c = asmtCompute(sec, { ...d, at: d.at ? wallToIso(d.at) : '' }); } catch (e) { c = asmtCompute(sec, { ...d, at: '' }); }
+  out.innerHTML = c ? `<b class="num" style="font-size:20px">${c.score}</b>${ASMT[sec].max ? `<span class="muted num"> / ${ASMT[sec].max}</span>` : ''} ${bandChip(sec, c.band)} <span class="hint">מועד האומדן הבא: <b class="num">${fD(c.next_due)}</b></span>` : '<span class="hint">מלאו את כל הפריטים כדי לראות ציון</span>';
+}
+function asmtSec(sec, name, icon, prefix, items, detail, extra = {}) {
+  return { name, sub: '(הדגמה)', icon, coll: sec, prefix, write: 'clinical.edit', lock: true, asmt: true, short: ASMT[sec].short,
+    fields: [{ k: 'at', label: 'תאריך ושעת האומדן', type: 'datetime', req: 1 }, ...items,
+      { k: 'live', label: 'ציון', type: 'custom', html: () => `<div class="fld"><span>ציון ורמה (מחושב)</span><div id="asmt-live" aria-live="polite"></div></div>`, read: () => undefined },
+      { k: 'notes', label: 'הערות', type: 'textarea' }],
+    defaults: r => ({ at: nowIso() }), validate: d => d.at && Date.parse(wallToIso(d.at)) > Date.now() + 60000 ? { at: 'לא יכול להיות בעתיד' } : {},
+    compute: d => asmtCompute(sec, d),
+    cols: [{ label: 'זמן', td: x => `<span class="num">${fDT(x.at)}</span>` }, { label: 'ציון', td: x => `<b class="num">${esc(x.score)}</b>${ASMT[sec].max ? `<small class="muted num">/${ASMT[sec].max}</small>` : ''} ${bandChip(sec, x.band)}` },
+      { label: 'פירוט', td: x => `<details><summary class="hint">פירוט</summary><small>${detail(x)}</small></details>` },
+      { label: 'מועד הבא', td: x => `<span class="num">${fD(x.next_due)}</span>${!x.superseded_by && x.next_due < today() && asmtLatest(sec, x.resident_id)?.id === x.id ? ' <span class="chip red">באיחור</span>' : ''}` },
+      { label: 'הערות', td: x => esc(x.notes || '—') }], ...extra };
+}
+const itemsTxt = (x, items) => items.filter(it => x[it.k] !== '' && x[it.k] != null).map(it => `${esc(it.label)}: ${esc(it.opts[x[it.k]] || x[it.k])}`).join('<br>');
 /* section engine.
    MED_SECTIONS[id] = { name, icon, coll, fields:[{k,label,type:'text'|'textarea'|'date'|'datetime'|'select'|'bool'|'number'|'multi'|'datalist',opts,req,when,hint}],
                         cols:[{label, td(x)}], write:'clinical.edit', defaults(r), validate(d, x, r)->errs, filters:[{k,label,opts}|{k:'q'}], match(x,f), rowCls(x),
@@ -2542,6 +2619,17 @@ const MED_SECTIONS = {
     cols: [{ label: 'חומר / גורם', td: x => `<b>${esc(x.allergen)}</b>` }, { label: 'סוג', td: x => esc(x.type) }, { label: 'תגובה', td: x => esc(x.reaction || '—') },
       { label: 'חומרה', td: x => `<span class="chip ${x.severity === 'חמורה' ? 'red' : x.severity === 'בינונית' ? 'warn' : 'blue'}">${esc(x.severity)}</span>` }, { label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }] },
   vitals: { name: 'מדדים', icon: 'activity', render: r => vitalsSection(r), actions: r => may('clinical.vitals') ? `<button class="btn pri" data-act="vitals" data-rid="${r.id}">${ic('plus')} הזנת מדדים</button>` : '<span class="chip">לקריאה בלבד</span>' },
+  norton: asmtSec('norton', 'אומדן פצעי לחץ – נורטון', 'shield', 'NT', NORTON_ITEMS, x => itemsTxt(x, NORTON_ITEMS)),
+  morse: asmtSec('morse', 'אומדן נפילות', 'alert', 'MF', MORSE_ITEMS, x => itemsTxt(x, MORSE_ITEMS)),
+  pain: asmtSec('pain', 'אומדן כאב', 'activity', 'PN', [{ k: 'tool', label: 'כלי', type: 'select', opts: { nrs: 'NRS/VAS (0–10)', painad: 'PAINAD (לדיירים שלא מתקשרים)' }, req: 1 },
+    { k: 'nrs', label: 'עוצמת כאב (0–10)', type: 'select', opts: Object.fromEntries([...Array(11).keys()].map(i => [String(i), String(i)])), req: 1, when: 'tool:nrs' }, ...PAINAD_ITEMS],
+    x => x.tool === 'nrs' ? `NRS/VAS: ${esc(x.nrs)}` : 'PAINAD · ' + itemsTxt(x, PAINAD_ITEMS), { defaults: () => ({ at: nowIso(), tool: 'nrs' }) }),
+  bmi: asmtSec('bmi', 'משקל ו-BMI', 'activity', 'BM', [{ k: 'weight', label: 'משקל (ק״ג)', type: 'number', req: 1, hint: r => { const w = latestWeight(r.id); return w ? `מולא מהמדידה האחרונה (${fD(w.at)})` : 'אין מדידת משקל קודמת'; } },
+    { k: 'height_cm', label: 'גובה (ס״מ)', type: 'number', req: 1, hint: 'השמירה מעדכנת את הגובה בפרטים האישיים' }],
+    x => `משקל ${esc(x.weight)} ק״ג · גובה ${esc(x.height_cm)} ס״מ`,
+    { defaults: r => ({ at: nowIso(), weight: latestWeight(r.id)?.value ?? '', height_cm: r.height_cm ?? '' }),
+      validate: d => { const e = {}; if (d.at && Date.parse(wallToIso(d.at)) > Date.now() + 60000) e.at = 'לא יכול להיות בעתיד'; if (d.weight !== '' && !isNaN(+d.weight) && (+d.weight < 20 || +d.weight > 250)) e.weight = 'בין 20 ל-250 ק״ג'; if (d.height_cm !== '' && !isNaN(+d.height_cm) && (+d.height_cm < 100 || +d.height_cm > 220)) e.height_cm = 'בין 100 ל-220 ס״מ'; return e; },
+      onSave: (rec, r) => { if (+rec.height_cm && r.height_cm !== +rec.height_cm) { r.height_cm = +rec.height_cm; stamp(r); } } }),
   labs: { name: 'ערכי בדיקות מעבדה', icon: 'flask', coll: 'labs', prefix: 'LB', write: 'clinical.edit',
     fields: [{ k: 'test', label: 'בדיקה', type: 'datalist', opts: () => [...new Set(S.clin.labs.map(x => x.test))], req: 1 }, { k: 'value', label: 'ערך', type: 'number', req: 1 }, { k: 'unit', label: 'יחידה', type: 'text' },
       { k: 'low', label: 'טווח תקין – מ-', type: 'number' }, { k: 'high', label: 'טווח תקין – עד', type: 'number' }, { k: 'at', label: 'תאריך', type: 'date', req: 1 }],
@@ -2711,7 +2799,7 @@ function medHeader(r) {
       <dl>${kv('ת״ז (הדגמה)', `<span class="num">${esc(r.demo_id)}</span>`)}${kv('מס׳ דייר', `<span class="num">${esc(r.id)}</span>`)}${kv('בניין', u.building)}${kv('קומה', u.floor)}${kv('דירה', esc(r.apartment))}
         ${kv('כניסה לדיור', adm ? `<span class="num">${fD(adm)}</span>` : '—')}${kv('ותק בדיור', tenureTxt(adm))}${kv('תחילת טיפול', `<span class="num">${fD(r.treatment_start || adm) || '—'}</span>`)}
         ${kv('קופ״ח', esc(r.medical_fund))}${kv('גיל', ageOf(r.birth_date))}${kv('גורם מתקצב', esc(r.funding_source || '—'))}${kv('טלפון', r.phone ? `<a class="num" href="tel:${esc(r.phone.replace(/-/g, ''))}">${esc(r.phone)}</a>` : '—')}</dl>
-      <div class="badges" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${medAllergyBadge(r)}</div></div></div>`;
+      <div class="badges" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${medAllergyBadge(r)}${asmtOverdue(r).length ? `<span class="chip warn">אומדן באיחור: ${asmtOverdue(r).map(s => `<a href="#/cat/medical/${r.id}/${s}">${esc(ASMT[s].short)}</a>`).join(', ')}</span>` : ''}</div></div></div>`;
 }
 function medAllergyBadge(r) { return allergyNames(r).length ? `<span class="chip red">⚠ רגישות: ${esc(allergyNames(r).join(', '))}</span>` : ''; }
 function viewMedicalFile() {
@@ -2725,7 +2813,7 @@ function viewMedicalFile() {
   ${medHeader(r)}
   <div class="mfile">
     <nav class="mmenu" aria-label="סעיפי התיק הרפואי">${secs.map(id => `<a href="#/cat/medical/${r.id}/${id}" ${id === sec ? 'aria-current="page"' : ''}>${ic(MED_SECTIONS[id].icon)}<span>${MED_SECTIONS[id].name}</span></a>`).join('')}</nav>
-    <section class="card mcontent" aria-label="${esc(def.name)}"><div class="msec-h"><h2>${esc(def.name)}</h2><span class="sp"></span><div class="actions no-print">${actions}</div></div>${body}</section>
+    <section class="card mcontent" aria-label="${esc(def.name)}"><div class="msec-h"><h2>${esc(def.name)}${def.sub ? ` <small class="muted" style="font-weight:500">${def.sub}</small>` : ''}</h2><span class="sp"></span><div class="actions no-print">${actions}</div></div>${body}</section>
   </div>`;
 }
 /* R13 (D2, D14, D15): locked records are never edited; a correction is a new linked record and the original only gains superseded_by */
@@ -2759,7 +2847,7 @@ function medField(fd, v, r) {
   else if (fd.type === 'datalist') inner = `<input name="${name}" type="text" list="dl-${name}" value="${esc(v ?? '')}"><datalist id="dl-${name}">${(o || []).map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
   else if (fd.type === 'custom') return fd.html(v, r);
   else inner = `<input name="${name}" type="text" value="${esc(v ?? '')}">`;
-  return `<div${fd.when ? ` data-when="${fd.when}"` : ''}>${fld(fd.label, inner, name, fd.req, fd.hint || '')}</div>`;
+  return `<div${fd.when ? ` data-when="${fd.when}"` : ''}>${fld(fd.label, inner, name, fd.req, (typeof fd.hint === 'function' ? fd.hint(r) : fd.hint) || '')}</div>`;
 }
 function panelMedrec(p) {
   const def = MED_SECTIONS[p.sec]; if (!def || !may('clinical.view')) return null;
@@ -2767,7 +2855,7 @@ function panelMedrec(p) {
   const corr = !!(p.correct && x && def.lock); if (x && def.lock && (!corr || x.superseded_by)) return null; // locked: only a correction of the newest version
   const v = x || (def.defaults ? def.defaults(r) : {});
   return `<div class="p-h"><div><h2>${esc(def.name)} – ${corr ? 'תיקון' : x ? 'עריכה' : 'רשומה חדשה'}</h2><div class="meta">${esc(fullName(r))} · דירה ${esc(r.apartment)}${x ? ` · נרשם ע״י ${esc(uname(x.by))} ${fDT(x.created_at)}` : ''}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
-  <div class="p-b"><form class="form" data-submit="medrec" data-sec="${p.sec}" data-id="${x ? x.id : ''}" data-rid="${r.id}" ${corr ? 'data-correct="1"' : ''} autocomplete="off">
+  <div class="p-b"><form class="form" data-submit="medrec" data-sec="${p.sec}" data-id="${x ? x.id : ''}" data-rid="${r.id}" ${corr ? 'data-correct="1"' : ''} ${def.asmt ? `data-asmt="${p.sec}"` : ''} autocomplete="off">
     ${corr ? `<p class="note-inline info" style="margin:0">הרשומה ${esc(x.id)} נעולה. השמירה יוצרת רשומת תיקון חדשה; המקור נשאר כמו שהוא ומסומן "הוחלף ע״י תיקון".</p>${fld('סיבת התיקון', '<textarea name="correction_reason" autofocus></textarea>', 'correction_reason', 1)}` : ''}
     ${def.fields.map(fd => medField(fd, v[fd.k], r)).join('')}
     <div class="actions"><button class="btn pri">שמירה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
@@ -2788,12 +2876,14 @@ function saveMedrec(form) {
   }
   Object.assign(e, def.validate ? def.validate(d, x, r, e) : {});
   if (!showErrors(form, e)) return;
-  const data = {}; for (const fd of def.fields) { let val = d[fd.k]; if (fd.type === 'datetime') val = val ? wallToIso(val) : ''; if (fd.type === 'number') val = val === '' ? '' : +val; if (fd.type === 'bool') val = !!val; data[fd.k] = val; }
+  const data = {}; for (const fd of def.fields) { if (fd.type === 'custom' && d[fd.k] === undefined) continue; let val = d[fd.k]; if (fd.type === 'datetime') val = val ? wallToIso(val) : ''; if (fd.type === 'number') val = val === '' ? '' : +val; if (fd.type === 'bool') val = !!val; data[fd.k] = val; }
+  if (def.compute) { const c = def.compute(data); if (!c) return showErrors(form, { [def.fields[1].k]: 'מלאו את כל הפריטים' }); Object.assign(data, c); } // R15: score / band / next_due
   let rec;
-  if (corr) { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: x.resident_id, ...data, by: me().id, correction_of: x.id, correction_reason: d.correction_reason }, true); coll.push(rec); x.superseded_by = rec.id; closePanel(); refresh(); return toast('התיקון נשמר. הרשומה המקורית נשמרה ומסומנת כמוחלפת'); }
+  if (corr) { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: x.resident_id, ...data, by: me().id, correction_of: x.id, correction_reason: d.correction_reason }, true); coll.push(rec); x.superseded_by = rec.id; if (def.onSave) def.onSave(rec, r); closePanel(); refresh(); return toast('התיקון נשמר. הרשומה המקורית נשמרה ומסומנת כמוחלפת'); }
   if (x) { const prev = {}; for (const k of Object.keys(data)) if (JSON.stringify(x[k] ?? '') !== JSON.stringify(data[k] ?? '')) prev[k] = x[k] ?? ''; // editable sections keep history[]
     if (Object.keys(prev).length) (x.history ||= []).push({ at: nowIso(), by: me().id, prev }); Object.assign(x, data); stamp(x); rec = x; toast('הרשומה עודכנה'); }
   else { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: r.id, ...data, by: me().id }, true); coll.push(rec); toast('הרשומה נשמרה'); }
+  if (def.onSave) def.onSave(rec, r);
   closePanel();
   if (def.after) def.after(rec, !x, d);
   refresh();
