@@ -691,21 +691,74 @@ function seed() {
   note(40, { text: `יציאה זמנית של ${g(byId(D.residents, 'R027'), 'הדייר', 'הדיירת')} מדירה ${A('R027')} – עדיין לא ${g(byId(D.residents, 'R027'), 'חזר', 'חזרה')}. לבדוק מול המשפחה לפני הסבב.`, subject: 'כללי', resident_id: 'R027', unit_id: 'A2', needs_action: true, assignee: 'role:reception', by: 'U2' });
   delete D.settings0;
 
-  // meds (fictitious, obviously made-up drug names only)
-  const DRUGS = [['DEMOLIN', 'DEMOLINUM'], ['TESTAPRIL', 'TESTAPRILATE'], ['SAMPLEX', 'SAMPLEXONE'], ['FICTOZOL', 'FICTOZOLAM'], ['MOCKARIN', 'MOCKARINE'], ['PLACEBRA', 'PLACEBRAMIDE'],
-    ['EXAMPLOR', 'EXAMPLORIDE'], ['DUMMEX', 'DUMMEXINE'], ['TRIALIN', 'TRIALINUM'], ['SIMULON', 'SIMULONATE'], ['NOTAREX', 'NOTAREXIN'], ['FAUXTRIN', 'FAUXTRINOL']]; let li = 0;
+  // mock drug catalogue (R8): registry-shaped but entirely fictitious. DEMO-### numbers, made-up uppercase Latin brand and ingredient names,
+  // made-up Hebrew names. Only the ATC code strings are real (public WHO classification, level 4). Flags: B in basket, R prescription,
+  // H high alert, D requires double check, C controlled.
+  // [name_en, name_he, [[ingredient, ingredient_he, strength, unit, allergy_class?]], atc_codes, dosage_form, route, flags, properties?]
+  const CATALOG = [
+    ['DEMOLIN', 'דמולין', [['DEMOLINUM', 'דמולינום', '10', 'MG']], ['C09AA'], 'טבליה', 'פומי', 'BR'],
+    ['TESTAPRIL', 'טסטפריל', [['TESTAPRILATE', 'טסטפרילט', '5', 'MG']], ['C07AB'], 'טבליה', 'פומי', 'BR'],
+    ['SAMPLEX', 'סמפלקס', [['SAMPLEXONE', 'סמפלקסון', '500', 'MG']], ['A10BA'], 'טבליה', 'פומי', 'BR', ['ליטול עם האוכל']],
+    ['FICTOZOL', 'פיקטוזול', [['FICTOZOLAM', 'פיקטוזולם', '20', 'MG']], ['A02BC'], 'כמוסה', 'פומי', 'BR', ['לפני האוכל']],
+    ['MOCKARIN', 'מוקרין', [['MOCKARINE', 'מוקרינה', '75', 'MG']], ['B01AC'], 'טבליה', 'פומי', 'BR'],
+    ['PLACEBRA', 'פלסברה', [['PLACEBRAMIDE', 'פלסברמיד', '40', 'MG']], ['C03CA'], 'טבליה', 'פומי', 'BR'],
+    ['EXAMPLOR', 'אקזמפלור', [['EXAMPLORIDE', 'אקזמפלוריד', '20', 'MG']], ['C10AA'], 'טבליה', 'פומי', 'BR'],
+    ['DUMMEX', 'דאמקס', [['DUMMEXINE', 'דאמקסין', '50', 'MCG']], ['H03AA'], 'טבליה', 'פומי', 'BR', ['על קיבה ריקה']],
+    ['TRIALIN', 'טריאלין', [['TRIALINUM', 'טריאלינום', '20', 'MG']], ['N06AB'], 'טבליה', 'פומי', 'BR'],
+    ['SIMULON', 'סימולון', [['SIMULONATE', 'סימולונט', '500', 'MG']], ['N02BE'], 'טבליה', 'פומי', 'B'],
+    ['NOTAREX', 'נוטרקס', [['NOTAREXIN', 'נוטרקסין', '100', 'MCG']], ['R03AC'], 'משאף', 'אינהלציה', 'BR'],
+    ['FAUXTRIN', 'פוקסטרין', [['FAUXTRINOL', 'פוקסטרינול', '1000', 'IU']], ['A11CC'], 'טיפות', 'פומי', ''],
+    ['SAMPLINSULIN', 'סמפלינסולין', [['INSULDEMO', 'אינסולדמו', '100', 'UNITS/ML']], ['A10AB'], 'תמיסה להזרקה', 'זריקה', 'BRHD', ['לשמור בקירור']],
+    ['TRIALFARIN', 'טריאלפרין', [['TRIALFARINATE', 'טריאלפרינט', '5', 'MG']], ['B01AA'], 'טבליה', 'פומי', 'BRHD'],
+    ['PLACEPARIN', 'פלספרין', [['PLACEPARINUM', 'פלספרינום', '40', 'MG']], ['B01AB'], 'תמיסה להזרקה', 'זריקה', 'BRHD'],
+    ['MOCKADONE', 'מוקדון', [['MOCKADONIUM', 'מוקדוניום', '10', 'MG']], ['N02AA'], 'טבליה', 'פומי', 'BRHDC'],
+    ['NOTAPHINE', 'נוטפין', [['NOTAPHINIUM', 'נוטפיניום', '25', 'MCG/H']], ['N02AB'], 'מדבקה', 'מקומי', 'BRHC', ['להחליף כל 72 שעות']],
+    ['FICTOPAM', 'פיקטופם', [['FICTOPAMINE', 'פיקטופמין', '0.5', 'MG']], ['N05BA'], 'טבליה', 'פומי', 'RC'],
+    ['DUMMOXIL', 'דאמוקסיל', [['DUMMOXICILLIN', 'דאמוקסיצילין', '500', 'MG', 'פניצילין']], ['J01CA'], 'כמוסה', 'פומי', 'BR'],
+    ['EXAMPLICLAV', 'אקזמפליקלב', [['EXAMPLICILLIN', 'אקזמפליצילין', '875', 'MG', 'פניצילין'], ['CLAVUDEMO', 'קלבודמו', '125', 'MG']], ['J01CR'], 'טבליה', 'פומי', 'BR'],
+    ['SULFAMOCK', 'סולפמוק', [['SULFAMOCKAZOLE', 'סולפמוקזול', '800', 'MG', 'סולפה'], ['TRIMODEMO', 'טרימודמו', '160', 'MG']], ['J01EE'], 'טבליה', 'פומי', 'BR'],
+    ['SALIDEMO', 'סלידמו', [['ACETYLSALIDEMATE', 'אצטילסלידמט', '100', 'MG', 'אספירין']], ['B01AC'], 'טבליה', 'פומי', 'B'],
+    ['FAUXPROFEN', 'פוקספרופן', [['FAUXPROFENUM', 'פוקספרופנום', '400', 'MG']], ['M01AE'], 'טבליה', 'פומי', ''],
+    ['DEMOSONE', 'דמוסון', [['DEMOSONIDE', 'דמוסוניד', '0.1', '%']], ['D07AC'], 'משחה', 'מקומי', 'BR'],
+    ['TESTOPTIC', 'טסטאופטיק', [['TESTOPTOLOL', 'טסטאופטולול', '0.5', '%']], ['S01ED'], 'טיפות עיניים', 'טיפות', 'BR'],
+    ['SOMNIDEMO', 'סומנידמו', [['SOMNIDEMONE', 'סומנידמון', '7.5', 'MG']], ['N05CF'], 'טבליה', 'פומי', 'R'],
+    ['MOCKALOL', 'מוקלול', [['MOCKALOLATE', 'מוקלולט', '2.5', 'MG']], ['C07AB'], 'טבליה', 'פומי', 'BR'],
+    ['PLACEBRAZOLE', 'פלסברזול', [['PLACEBRAZOLUM', 'פלסברזולום', '40', 'MG']], ['A02BC'], 'טבליה', 'פומי', 'BR'],
+    ['EXAMPLITROL', 'אקזמפליטרול', [['EXAMPLINITRATE', 'אקזמפליניטרט', '0.4', 'MG']], ['C01DA'], 'טבליה תת-לשונית', 'תת-לשוני', 'BR'],
+    ['CALCIDEMO', 'קלצידמו', [['CALCIDEMATE', 'קלצידמט', '600', 'MG'], ['FAUXTRINOL', 'פוקסטרינול', '400', 'IU']], ['A12AX'], 'טבליה', 'פומי', 'B'],
+    ['TRIALOSE', 'טריאלוז', [['TRIALACTULOSE', 'טריאלקטולוז', '10', 'G/15ML']], ['A06AD'], 'סירופ', 'פומי', 'B'],
+    ['SIMUPRIL PLUS', 'סימופריל פלוס', [['SIMUPRILATE', 'סימופרילט', '5', 'MG'], ['DUMMEXIDE', 'דאמקסיד', '12.5', 'MG']], ['C09BA'], 'טבליה', 'פומי', 'BR'],
+    ['NOTAMET', 'נוטמט', [['NOTAMETOCLONE', 'נוטמטוקלון', '10', 'MG']], ['A03FA'], 'טבליה', 'פומי', 'BR'],
+    ['FAUXDONE', 'פוקסדון', [['FAUXPERIDONE', 'פוקספרידון', '1', 'MG']], ['N05AX'], 'טבליה', 'פומי', 'BR'],
+    ['DEMOGLIP', 'דמוגליפ', [['DEMOGLIPTIN', 'דמוגליפטין', '100', 'MG']], ['A10BH'], 'טבליה', 'פומי', 'BR'],
+    ['MEMODEMO', 'ממודמו', [['MEMODEMANTINE', 'ממודמנטין', '10', 'MG']], ['N06DX'], 'טבליה', 'פומי', 'BR'],
+    ['GREXAMPLE', 'גרקסמפל', [['GREXAMPLEL', 'גרקסמפלל', '75', 'MG']], ['B01AC'], 'טבליה', 'פומי', 'BR'],
+    ['MOCKOXIN', 'מוקוקסין', [['MOCKOXINUM', 'מוקוקסינום', '0.125', 'MG']], ['C01AA'], 'טבליה', 'פומי', 'BRH'],
+    ['PLACEFENAC', 'פלספנק ג׳ל', [['PLACEFENACUM', 'פלספנקום', '1', '%']], ['M02AA'], 'ג׳ל', 'מקומי', ''],
+    ['TRIALCOBAL', 'טריאלקובל', [['TRIALCOBALAMIN', 'טריאלקובלמין', '1000', 'MCG']], ['B03BA'], 'תמיסה להזרקה', 'זריקה', 'BR']];
+  D.drug_catalog = CATALOG.map(([name_en, name_he, ings, atc, dosage_form, route, fl, props], i) => ({
+    reg_num: 'DEMO-' + String(i + 1).padStart(3, '0'), name_he, name_en,
+    active_ingredients: ings.map(([name, nhe, strength, unit, allergy_class]) => ({ name, name_he: nhe, strength, unit, ...(allergy_class ? { allergy_class } : {}) })),
+    atc_codes: atc, dosage_form, route, in_basket: fl.includes('B'), is_prescription: fl.includes('R'),
+    high_alert: fl.includes('H'), requires_double_check: fl.includes('D'), controlled_schedule: fl.includes('C') ? 'סם מסוכן (הדגמה)' : '', properties: props || [] }));
+  const catReg = reg => D.drug_catalog.find(c => c.reg_num === reg);
+  // meds: every order is built from a catalogue entry (D8). PRN-only and flagged drugs are added explicitly below for the demos.
+  const PRN_ONLY = ['DEMO-010', 'DEMO-018', 'DEMO-023', 'DEMO-026', 'DEMO-029', 'DEMO-033'];
+  const POOL = D.drug_catalog.filter(c => !c.requires_double_check && !c.controlled_schedule && c.route !== 'זריקה' && !PRN_ONLY.includes(c.reg_num)); let li = 0;
   const TIMES = [['08:00'], ['08:00', '20:00'], ['08:00', '13:00', '20:00'], ['22:00'], ['13:00'], ['08:00', '22:00'], ['20:00']];
   const DOCS = ['ד״ר לדוגמה א׳', 'ד״ר לדוגמה ב׳', 'ד״ר בדיקה ג׳'];
   D.med_orders = []; let mo = 0;
+  const mkOrder = (r, c, o) => { const rec = { id: 'MO' + (++mo), resident_id: r.id, drug_reg_num: c.reg_num, dosage_form: c.dosage_form, ...drugFields(c), kind: 'chronic', dose: doseFor(c), route: c.route, times: [], prn: false,
+    prescriber: DOCS[mo % 3], start: addDays(today(), -30), active: true, stop_date: null, stop_reason: '', ...st('U3'), ...o }; D.med_orders.push(rec); return rec; };
   for (const r of D.residents) {
     if (['left', 'deceased'].includes(r.status)) continue; const k = r.nursing_level.at(-1).level === 'סיעודי' ? 3 + Math.floor(R() * 4) : Math.floor(R() * 4);
-    const extra = k && chance(.3) ? 1 : 0;
+    const extra = k && chance(.3) ? 1 : 0, used = new Set();
     for (let j = 0; j < k + extra; j++) {
-      const prn = chance(.12), [brand, generic] = DRUGS[li++ % DRUGS.length], strength = pick(['5 MG', '10 MG', '20 MG', '50 MG', '100 MG', '250 MG']);
+      let c = null; for (let tries = 0; tries < POOL.length && !c; tries++) { const x = POOL[li++ % POOL.length]; if (!used.has(x.reg_num) && !(r.allergies || []).some(a => allergenMatches(a, x))) c = x; } // D8: no allergy conflicts in the seed
+      if (!c) break; used.add(c.reg_num);
       const start = addDays(today(), -(20 + Math.floor(R() * 400))), stopped = j === k && k > 0; // an extra, stopped order for some residents
-      D.med_orders.push({ id: 'MO' + (++mo), resident_id: r.id, brand, strength, generic, generic_dose: strength, drug: `${brand} ${strength}`, kind: prn || chance(.15) ? 'acute' : 'chronic',
-        dose: pick(['1 טבליה', '½ טבליה', '2 טבליות', '5 מ״ל', '1 כמוסה']), route: pick(['פומי', 'פומי', 'פומי', 'תת-לשוני', 'מקומי', 'אינהלציה']), times: prn ? [] : pick(TIMES), prn,
-        prescriber: pick(DOCS), start, active: !stopped, stop_date: stopped ? addDays(today(), -(3 + Math.floor(R() * 15))) : null, stop_reason: stopped ? pick(['סיום טיפול', 'הוחלף בתכשיר אחר', 'לפי הוראת רופא/ה']) : '', ...st('U3') });
+      mkOrder(r, c, { kind: chance(.15) ? 'acute' : 'chronic', times: pick(TIMES), prescriber: pick(DOCS), start, active: !stopped,
+        stop_date: stopped ? addDays(today(), -(3 + Math.floor(R() * 15))) : null, stop_reason: stopped ? pick(['סיום טיפול', 'הוחלף בתכשיר אחר', 'לפי הוראת רופא/ה']) : '' });
     }
     if (k) r.med_handling = { intake: pick(['עצמאי', 'בהשגחה', 'ע״י צוות']), purchase: pick(['עצמאי', 'משפחה', 'מוסד']) };
   }
@@ -879,6 +932,8 @@ const PERMS = {
   'prospects.create': ['reception', 'manager', 'admin'],   // incl. adding follow-ups
   'prospects.edit': ['manager', 'admin'],                   // edit fields, change status
   'home.view': ['reception', 'shift_manager', 'nurse', 'social_worker', 'manager', 'admin'],
+  'catalog.view': ['shift_manager', 'nurse', 'manager', 'admin'],   // = meds.view ∪ clinical.view (read-only #/catalog)
+  'catalog.edit': ['admin'],                                       // overlay flags only, in הגדרות (D7)
 };
 function can(role, action) { return (PERMS[action] || []).includes(role); }
 const may = action => !!me() && can(me().role, action);
@@ -911,6 +966,31 @@ const socialWorkers = () => S.users.filter(u => u.active && (u.role === 'social_
 const SEV_ORDER = { 'חמורה': 0, 'בינונית': 1, 'קלה': 2 };
 const allergyRecs = r => (S.clin?.allergies || []).filter(x => x.resident_id === r.id && !x.removed).sort((a, b) => (SEV_ORDER[a.severity] ?? 3) - (SEV_ORDER[b.severity] ?? 3));
 const allergyNames = r => allergyRecs(r).map(x => x.allergen);
+/* mock drug catalogue (R8): S.drug_catalog, keyed by reg_num */
+const catByReg = reg => reg ? (S.drug_catalog || []).find(c => c.reg_num === reg) || null : null;
+const drugOf = o => o ? catByReg(o.drug_reg_num) : null;
+const catStrength = c => c.active_ingredients.map(i => `${i.strength} ${i.unit}`).join(' / ');
+const catGeneric = c => c.active_ingredients.map(i => i.name).join(' + ');
+// derived display fields kept on every order so #/meds, tabNursing and the meds tab keep working
+function drugFields(c) { const s = catStrength(c); return { brand: c.name_en, strength: s, generic: catGeneric(c), generic_dose: s, drug: `${c.name_en} ${s}` }; }
+function doseFor(c) { return { 'טבליה': '1 טבליה', 'כמוסה': '1 כמוסה', 'טיפות': '10 טיפות', 'משאף': '2 שאיפות', 'תמיסה להזרקה': '1 מ״ל', 'מדבקה': 'מדבקה אחת', 'טיפות עיניים': 'טיפה בכל עין', 'משחה': 'מריחה דקה', 'ג׳ל': 'מריחה דקה', 'סירופ': '15 מ״ל', 'טבליה תת-לשונית': '1 טבליה' }[c.dosage_form] || '1'; }
+const catLabel = c => `${c.reg_num} · ${c.name_en} ${catStrength(c)} · ${c.name_he} · ${c.active_ingredients.map(i => `${i.name} ${i.name_he}`).join(', ')}`;
+function catFromPick(v) {
+  v = String(v || '').trim(); if (!v) return null; const m = v.match(/^DEMO-\d{3}/i); if (m) return catByReg(m[0].toUpperCase());
+  const n = norm(v); return (S.drug_catalog || []).find(c => norm(c.name_en) === n || norm(c.name_he) === n || norm(catLabel(c)) === n) || null;
+}
+const catMatch = (c, q) => !q || norm(catLabel(c) + c.atc_codes.join(' ')).includes(norm(q));
+function catFlagChips(c, withControlled = true) {
+  if (!c) return '';
+  return [c.high_alert ? '<span class="chip red">תרופה בסיכון גבוה</span>' : '', c.requires_double_check ? '<span class="chip warn">נדרש אימות כפול</span>' : '',
+    withControlled && c.controlled_schedule ? `<span class="chip vio">${esc(c.controlled_schedule)}</span>` : ''].filter(Boolean).join(' ');
+}
+// D12: a normalized allergen matches an ingredient name / Hebrew name / allergy class, or the catalogue brand names
+function allergenMatches(allergen, c) {
+  const a = norm(allergen); if (!a || !c) return false;
+  const keys = [c.name_he, c.name_en, ...c.active_ingredients.flatMap(i => [i.name, i.name_he, i.allergy_class])].filter(Boolean).map(norm);
+  return keys.some(k => k === a || (a.length >= 3 && k.includes(a)));
+}
 const nursingNow = r => r.nursing_level?.at(-1)?.level || '—'; // מצב תפקודי (functional status)
 const functionalLevels = (cur) => S.settings.functional_levels.filter(x => !S.settings.functional_levels_off.includes(x) || x === cur);
 function avColor(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 38% 42%)`; }
@@ -996,6 +1076,7 @@ window.addEventListener('resize', () => measureTop());
 function allowedRoute() {
   const r = UI.route; if (r === 'resident') return may('res.view');
   if (r === 'home') return may('home.view');
+  if (r === 'catalog') return may('catalog.view'); // not in NAV, so the Alt shortcuts stay as they are
   if (r === 'cat') { const c = catOf(UI.params[0]); return !!c && c.perm(); }
   const n = NAV.find(x => x.id === r); return n && may(n.perm);
 }
@@ -1003,7 +1084,7 @@ function renderMain() {
   keepFocus(() => {
     if (!allowedRoute()) { const h = homeRoute(); if (UI.route && UI.route !== h) toast('אין הרשאה למסך הזה בתפקיד הנוכחי'); history.replaceState(null, '', '#/' + h); parseHash(); }
     const V = VIEWS[UI.route]; $('#main').innerHTML = V ? V() : '';
-    const title = UI.route === 'resident' ? 'תיק דייר' : UI.route === 'home' ? 'ראשי' : UI.route === 'cat' ? catOf(UI.params[0])?.name : NAV.find(n => n.id === UI.route)?.name; document.title = `${title} – סבב דיירים – הוד ירושלים (הדגמה)`;
+    const title = UI.route === 'resident' ? 'תיק דייר' : UI.route === 'home' ? 'ראשי' : UI.route === 'catalog' ? 'רשימת תרופות' : UI.route === 'cat' ? catOf(UI.params[0])?.name : NAV.find(n => n.id === UI.route)?.name; document.title = `${title} – סבב דיירים – הוד ירושלים (הדגמה)`;
     applyWhenAll();
   });
 }
@@ -2105,6 +2186,12 @@ function viewSettings() {
     ${fl.map((x, i) => `<tr style="${off.includes(x) ? 'opacity:.6' : ''}"><td><input type="text" value="${esc(x)}" data-ch="lvl-set" data-i="${i}" data-k="name" aria-label="שם הערך"></td><td><label class="cb"><input type="checkbox" ${off.includes(x) ? '' : 'checked'} data-ch="lvl-set" data-i="${i}" data-k="active"> ${off.includes(x) ? 'לא פעיל' : 'פעיל'}</label></td><td class="n">${S.residents.filter(r => !isGone(r) && nursingNow(r) === x).length}</td></tr>`).join('')}</tbody></table></div>
     <form class="actions" data-submit="lvl-add" style="margin-top:10px"><input type="text" name="name" placeholder="ערך חדש" aria-label="ערך חדש"><button class="btn pri">${ic('plus')} הוספה</button><span class="err" data-for="name"></span></form>
     <p class="hint">ערך לא פעיל נשאר אצל דיירים שכבר משויכים אליו, אבל לא מוצע לבחירה. שינוי שם מעדכן גם את הדיירים.</p>`);
+  if (may('catalog.edit')) out += sec('drugs', 'רשימת תרופות (הדגמה)', `<p class="hint" style="margin-top:0">עדכון סימונים בלבד (D7). אין הוספה או מחיקה של תרופות. כל שינוי נשמר בהיסטוריה של התרופה. <a href="#/catalog">לרשימה המלאה</a></p>
+    <div class="tbl" style="max-height:480px"><table><thead><tr><th>מס׳ רישום</th><th>תרופה</th><th>סיכון גבוה</th><th>אימות כפול</th><th>סם מסוכן</th><th>בסל</th><th>עדכון אחרון</th></tr></thead><tbody>
+    ${S.drug_catalog.map(c => { const last = (c.flag_history || []).at(-1), cb = (k, label) => `<td><label class="cb"><input type="checkbox" ${c[k] ? 'checked' : ''} data-ch="drug-flag" data-reg="${c.reg_num}" data-k="${k}" aria-label="${label} – ${esc(c.name_en)}"></label></td>`;
+      return `<tr><td class="n">${c.reg_num}</td><td><b>${esc(c.name_en)}</b> <small class="muted">${esc(catStrength(c))}</small></td>${cb('high_alert', 'סיכון גבוה')}${cb('requires_double_check', 'אימות כפול')}
+      <td><select data-ch="drug-flag" data-reg="${c.reg_num}" data-k="controlled_schedule" aria-label="סם מסוכן – ${esc(c.name_en)}">${opt('', 'לא', c.controlled_schedule)}${opt('סם מסוכן (הדגמה)', 'סם מסוכן (הדגמה)', c.controlled_schedule)}</select></td>${cb('in_basket', 'בסל')}
+      <td><small class="muted">${last ? `${esc(uname(last.by))} · ${fDT(last.at)}` : '—'}</small></td></tr>`; }).join('')}</tbody></table></div>`);
   out += sec('moves', 'סוגי תנועות (לקריאה בלבד)', `<div class="tbl"><table><thead><tr><th>פותח</th><th>סוגר</th><th>מצב</th></tr></thead><tbody>${MOVE_TYPES.map(t => `<tr><td>${t.name}</td><td>${t.closer || '(אין)'}</td><td>${{ admission: 'ללא שינוי (רישום כניסה)', hospital: 'באשפוז', vacation: 'בחופשה', away: 'מחוץ לבית', left: 'עזב', deceased: 'נפטר' }[t.opens_state]}</td></tr>`).join('')}</tbody></table></div>`);
   out += sec('evtypes', 'סוגי אירועים ורשימת עדכונים', `<div class="tbl"><table><thead><tr><th>סוג</th><th>פעיל</th><th>את מי לעדכן ותוך כמה זמן</th></tr></thead><tbody>${S.event_types.map(t => `<tr><td><b>${esc(t.name)}</b></td><td><input type="checkbox" ${t.active ? 'checked' : ''} data-ch="evtype-active" data-id="${t.id}" aria-label="פעיל"></td><td>${t.notify.map(n => `${NOTIFY_TO[n.to]} (${n.within_min >= 60 ? n.within_min / 60 + ' ש׳' : n.within_min + ' ד׳'})`).join(' · ')}</td></tr>`).join('')}</tbody></table></div>`);
   const sh = S.settings.shifts;
@@ -2128,7 +2215,8 @@ function catStrip(c, extra = '') { return `<div class="cat-strip cat-${c.id}"><h
 function viewCat() {
   const c = catOf(UI.params[0]); if (!c) return '';
   if (CAT_SECTIONS[c.id] && UI.params[1]) return catStrip(c, `<span class="sp"></span><a class="back" href="#/cat/${c.id}">← לרשימת הדיירים</a>`) + (c.id === 'medical' ? viewMedicalFile() : viewResidentFile());
-  const quick = c.id === 'admin' ? [['round', 'סבב', 'rounds.run'], ['calls', 'קריאות שירות', 'calls.view'], ['movements', 'תנועות', 'mov.view']].filter(q => may(q[2])).map(([id, name]) => `<a class="btn sm" href="#/${id}">${name}</a>`).join('') : '';
+  const quick = c.id === 'admin' ? [['round', 'סבב', 'rounds.run'], ['calls', 'קריאות שירות', 'calls.view'], ['movements', 'תנועות', 'mov.view']].filter(q => may(q[2])).map(([id, name]) => `<a class="btn sm" href="#/${id}">${name}</a>`).join('')
+    : c.id === 'medical' && may('catalog.view') ? `<a class="btn sm" href="#/catalog">${ic('pill')} רשימת תרופות (הדגמה)</a>` : '';
   if (c.id === 'marketing') return catStrip(c) + viewProspects(true);
   return catStrip(c, `<span class="sp"></span>${quick}`) + (CAT_SECTIONS[c.id] ? catResidents(c) : '');
 }
@@ -2288,7 +2376,7 @@ const lastIntake = oid => S.clin.intake.filter(x => x.order_ids.includes(oid)).s
 function medsSection(r) {
   const f = medF(), canRun = may('meds.run');
   const all = S.med_orders.filter(o => o.resident_id === r.id);
-  const list = all.filter(o => (!f.kind || o.kind === f.kind) && (f.show === 'all' || (f.show === 'active' ? o.active : !o.active)) && (!f.q || norm(`${o.brand || o.drug} ${o.generic || ''}`).includes(norm(f.q))))
+  const list = all.filter(o => (!f.kind || o.kind === f.kind) && (f.show === 'all' || (f.show === 'active' ? o.active : !o.active)) && (!f.q || norm(`${o.brand || o.drug} ${o.generic || ''} ${o.drug_reg_num || ''} ${drugOf(o)?.name_he || ''}`).includes(norm(f.q))))
     .sort((a, b) => (b.active - a.active) || String(b.start || '').localeCompare(String(a.start || '')));
   f.sel = f.sel.filter(id => all.some(o => o.id === id));
   const mh = r.med_handling || {};
@@ -2300,7 +2388,7 @@ function medsSection(r) {
   ${list.length ? `<div class="tbl"><table><thead><tr>${canRun ? '<th><span class="sr">בחירה</span></th>' : ''}<th>תרופה</th><th>מינון ושעות</th><th>רופא/ה מרשם / עודכן ע״י</th><th>סוג</th><th>סטטוס</th><th>בדיקת נטילה אחרונה</th></tr></thead><tbody>
   ${list.map(o => { const li2 = lastIntake(o.id); return `<tr class="${o.active ? '' : 'stopped'}${f.sel.includes(o.id) ? ' sel' : ''}">
     ${canRun ? `<td><input type="checkbox" data-act="med-sel" data-id="${o.id}" ${f.sel.includes(o.id) ? 'checked' : ''} aria-label="בחירת ${esc(o.drug)}"></td>` : ''}
-    <td><b>${esc(o.brand ? `${o.brand} ${o.strength}` : o.drug)}</b>${o.generic ? `<br><small class="muted">${esc(o.generic)} ${esc(o.generic_dose || '')}</small>` : ''}</td>
+    <td><b>${esc(o.brand ? `${o.brand} ${o.strength}` : o.drug)}</b>${o.generic ? `<br><small class="muted">${esc(o.generic)} ${esc(o.generic_dose || '')}</small>` : ''}${o.drug_reg_num ? `<br><small class="muted num">${esc(o.drug_reg_num)} · ${esc(o.dosage_form || '')}</small>` : ''}</td>
     <td>${esc(o.dose)} · ${esc(o.route)}<br><small class="muted num">${o.prn ? 'לפי הצורך' : esc(o.times.join(', '))}</small></td>
     <td>${esc(o.prescriber || '—')}<br><small class="muted">עודכן ע״י ${esc(uname(o.updated_by))}${o.updated_at ? ' · ' + fD(o.updated_at) : ''}</small></td>
     <td><span class="chip ${o.kind === 'acute' ? 'warn' : 'blue'}">${MED_KIND[o.kind] || '—'}</span></td>
@@ -2313,15 +2401,23 @@ function medsActions(r) {
   if (!may('meds.run')) return '<span class="chip">לקריאה בלבד</span>';
   return `<button class="btn pri" data-act="medorder-new" data-rid="${r.id}">${ic('plus')} הוספה</button><button class="btn" data-act="medorder-update" data-rid="${r.id}">עדכון</button><button class="btn" data-act="intake-open" data-rid="${r.id}">בדיקת נטילה</button>`;
 }
+/* read-only block under the catalogue picker: brand / generic / strength / form from the catalogue entry */
+function catInfo(c) {
+  if (!c) return '<p class="hint" style="margin:0">לא נבחרה תרופה. השם המסחרי, הגנרי והחוזק יוצגו כאן אחרי הבחירה.</p>';
+  return `<dl class="kv card pad" style="font-size:14.5px"><dt>מס׳ רישום</dt><dd class="num">${esc(c.reg_num)}</dd><dt>שם מסחרי</dt><dd>${esc(c.name_en)} <small class="muted">${esc(c.name_he)}</small></dd>
+    <dt>שם גנרי</dt><dd>${esc(catGeneric(c))}</dd><dt>חוזק</dt><dd class="num"><bdi dir="ltr">${esc(catStrength(c))}</bdi></dd><dt>צורת מתן</dt><dd>${esc(c.dosage_form)} · ${esc(c.route)}</dd>
+    ${catFlagChips(c) ? `<dt>סימונים</dt><dd>${catFlagChips(c)}</dd>` : ''}${c.properties.length ? `<dt>הערות</dt><dd>${esc(c.properties.join(' · '))}</dd>` : ''}</dl>`;
+}
 function panelMedOrder(p) {
   if (!may('meds.run')) return null;
   const o = p.id && byId(S.med_orders, p.id), r = res(o ? o.resident_id : p.rid); if (!r) return null;
-  const v = o || { brand: '', strength: '', generic: '', generic_dose: '', kind: 'chronic', dose: '', route: 'פומי', times: [], prn: false, prescriber: '', start: today() };
-  return `<div class="p-h"><div><h2>${o ? 'עדכון הוראת תרופה' : 'הוראת תרופה חדשה'}</h2><div class="meta">${esc(fullName(r))} · שמות פיקטיביים בלבד</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
+  const v = o || { kind: 'chronic', dose: '', route: 'פומי', times: [], prn: false, prescriber: '', start: today() }, c = drugOf(o);
+  return `<div class="p-h"><div><h2>${o ? 'עדכון הוראת תרופה' : 'הוראת תרופה חדשה'}</h2><div class="meta">${esc(fullName(r))} · בחירה מרשימת התרופות (הדגמה)</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
   <div class="p-b"><form class="form" data-submit="medorder" data-id="${o ? o.id : ''}" data-rid="${r.id}" autocomplete="off">
-    <div class="frow">${fld('שם מסחרי', `<input name="brand" type="text" value="${esc(v.brand || v.drug || '')}" autofocus>`, 'brand', 1)}${fld('חוזק', `<input name="strength" type="text" value="${esc(v.strength || '')}" placeholder="20 MG">`, 'strength', 1)}</div>
-    <div class="frow">${fld('שם גנרי', `<input name="generic" type="text" value="${esc(v.generic || '')}">`, 'generic')}${fld('מינון גנרי', `<input name="generic_dose" type="text" value="${esc(v.generic_dose || '')}">`, 'generic_dose')}</div>
-    <div class="frow">${fld('סוג', `<select name="kind">${opts(MED_KIND, v.kind)}</select>`, 'kind', 1)}${fld('מינון', `<input name="dose" type="text" value="${esc(v.dose)}" placeholder="1 טבליה">`, 'dose', 1)}${fld('דרך מתן', `<select name="route">${MED_ROUTES.map(x => opt(x, x, v.route)).join('')}</select>`, 'route', 1)}</div>
+    ${fld('תרופה מרשימת התרופות', `<input name="drug_pick" type="text" list="dl-cat" value="${c ? esc(catLabel(c)) : ''}" placeholder="חיפוש לפי שם, רכיב פעיל או מס׳ רישום" data-in="cat-pick" autofocus>
+      <datalist id="dl-cat">${S.drug_catalog.map(x => `<option value="${esc(catLabel(x))}">`).join('')}</datalist>`, 'drug_pick', 1, o && !c ? `הוראה ישנה: ${esc(o.drug)} – בחרו את התרופה מהרשימה` : 'הבחירה ממלאת את צורת המתן ואת דרך המתן')}
+    <div id="cat-info">${catInfo(c)}</div>
+    <div class="frow">${fld('סוג', `<select name="kind">${opts(MED_KIND, v.kind)}</select>`, 'kind', 1)}${fld('מינון', `<input name="dose" type="text" value="${esc(v.dose)}" placeholder="1 טבליה">`, 'dose', 1)}${fld('דרך מתן', `<select name="route">${MED_ROUTES.map(x => opt(x, x, v.route)).join('')}</select>`, 'route', 1, 'ממולא מהרשימה, אפשר לשנות')}</div>
     <label class="cb"><input type="checkbox" name="prn" ${v.prn ? 'checked' : ''}> לפי הצורך (ללא שעות קבועות)</label>
     <div data-when="prn:off">${fld('שעות מתן', `<input name="times" type="text" value="${esc(v.times.join(', '))}" placeholder="08:00, 20:00">`, 'times', 1, 'שעות בפורמט 24 שעות, מופרדות בפסיק')}</div>
     <div class="frow">${fld('רופא/ה מרשם', `<input name="prescriber" type="text" list="dl-docs" value="${esc(v.prescriber || '')}"><datalist id="dl-docs">${S.settings.doctors.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`, 'prescriber', 1)}${fld('תאריך התחלה', dIn('start', v.start || today()), 'start', 1)}</div>
@@ -2332,14 +2428,15 @@ function panelMedOrder(p) {
 }
 function saveMedOrder(form) {
   if (!may('meds.run')) return toast(NO_PERM_ACT);
-  const o = form.dataset.id && byId(S.med_orders, form.dataset.id), r = res(form.dataset.rid), d = readForm(form), e = {};
-  for (const k of ['brand', 'strength', 'dose', 'prescriber']) if (!d[k]) e[k] = 'שדה חובה';
+  const o = form.dataset.id && byId(S.med_orders, form.dataset.id), r = res(form.dataset.rid), d = readForm(form), e = {}, c = catFromPick(d.drug_pick);
+  if (!c) e.drug_pick = 'בחרו תרופה מרשימת התרופות';
+  for (const k of ['dose', 'prescriber']) if (!d[k]) e[k] = 'שדה חובה';
   if (!d.start) e.start = 'שדה חובה';
   let times = [];
   if (!d.prn) { const parts = (d.times || '').split(/[,\s]+/).filter(Boolean); times = parts.map(parseT); if (!parts.length) e.times = 'הזינו לפחות שעה אחת'; else if (times.some(t => !t)) e.times = 'שעה בפורמט 24 שעות, למשל 08:00'; times = [...new Set(times.filter(Boolean))].sort(); }
   if (d.stop) { if (!d.stop_date) e.stop_date = 'שדה חובה'; else if (d.start && d.stop_date < d.start) e.stop_date = 'לא לפני תאריך ההתחלה'; else if (futureDate(d.stop_date)) e.stop_date = 'לא בעתיד'; if (!d.stop_reason) e.stop_reason = 'כתבו סיבה'; }
   if (!showErrors(form, e)) return;
-  const brand = d.brand.toUpperCase(), data = { brand, strength: d.strength.toUpperCase(), generic: d.generic.toUpperCase(), generic_dose: d.generic_dose.toUpperCase(), drug: `${brand} ${d.strength.toUpperCase()}`, kind: d.kind, dose: d.dose, route: d.route, prn: !!d.prn, times: d.prn ? [] : times, prescriber: d.prescriber, start: d.start };
+  const data = { drug_reg_num: c.reg_num, dosage_form: c.dosage_form, ...drugFields(c), kind: d.kind, dose: d.dose, route: d.route, prn: !!d.prn, times: d.prn ? [] : times, prescriber: d.prescriber, start: d.start };
   if (o) { Object.assign(o, data); if (d.stop) Object.assign(o, { active: false, stop_date: d.stop_date, stop_reason: d.stop_reason }); stamp(o); toast(d.stop ? 'ההוראה הופסקה' : 'ההוראה עודכנה'); }
   else { S.med_orders.push(stamp({ id: 'MO' + (1 + Math.max(0, ...S.med_orders.map(x => +x.id.slice(2)))), resident_id: r.id, ...data, active: true, stop_date: null, stop_reason: '' }, true)); toast('ההוראה נוספה'); }
   medF().sel = []; closePanel(); refresh();
@@ -2473,6 +2570,29 @@ function saveMedrec(form) {
 }
 
 /* ================================================================
+   Mock drug catalogue (רשימת תרופות לדוגמה, R8): read-only list; admin edits overlay flags in הגדרות
+   ================================================================ */
+const CAT_FILTERS = { high_alert: 'תרופה בסיכון גבוה', requires_double_check: 'נדרש אימות כפול', controlled: 'סם מסוכן', in_basket: 'בסל הבריאות', allergy: 'עם קבוצת רגישות' };
+const catFilterOk = (c, fl) => !fl || (fl === 'controlled' ? !!c.controlled_schedule : fl === 'allergy' ? c.active_ingredients.some(i => i.allergy_class) : !!c[fl]);
+function viewCatalog() {
+  const f = F('catalog', { q: '', flag: '' });
+  const list = S.drug_catalog.filter(c => catMatch(c, f.q) && catFilterOk(c, f.flag));
+  return `<div class="ph"><h1>רשימת תרופות (הדגמה)</h1><span class="sub">${list.length} מתוך ${S.drug_catalog.length} · תרופות פיקטיביות בלבד</span><span class="sp"></span>
+    ${may('catalog.edit') ? '<a class="btn" href="#/settings">עדכון סימונים בהגדרות</a>' : ''}${may('clinical.view') ? '<a class="btn" href="#/cat/medical">← לתחום הרפואי</a>' : ''}</div>
+  <p class="note-inline info" style="margin:0 0 12px">לקריאה בלבד. הרשימה בנויה בצורה של רישום תרופות (מס׳ רישום, רכיבים פעילים, ATC), אבל כל השמות והמספרים בדויים. הוראות תרופות נבחרות מתוך הרשימה הזו.</p>
+  <div class="filters">
+    <div class="q">${ic('search')}<input id="cat-q" type="search" placeholder="שם, רכיב פעיל, מס׳ רישום או ATC" value="${esc(f.q)}" data-in="f" data-view="catalog" data-k="q" aria-label="חיפוש ברשימת התרופות"></div>
+    <select data-ch="f" data-view="catalog" data-k="flag" aria-label="סינון לפי סימון">${opts(CAT_FILTERS, f.flag, 'כל התרופות')}</select>
+  </div>
+  <div class="tbl"><table><thead><tr><th>מס׳ רישום</th><th>תרופה</th><th>רכיבים פעילים</th><th>ATC</th><th>צורה / דרך מתן</th><th>סימונים</th><th>בסל</th><th>מרשם</th></tr></thead><tbody>
+  ${list.map(c => `<tr><td class="n">${esc(c.reg_num)}</td><td><b>${esc(c.name_en)}</b><br><small class="muted">${esc(c.name_he)}</small></td>
+    <td>${c.active_ingredients.map(i => `${esc(i.name)} <span class="num">${esc(i.strength)} ${esc(i.unit)}</span>${i.allergy_class ? ` <span class="chip">קבוצת רגישות: ${esc(i.allergy_class)}</span>` : ''}<br><small class="muted">${esc(i.name_he)}</small>`).join('<br>')}</td>
+    <td class="n">${esc(c.atc_codes.join(', '))}</td><td>${esc(c.dosage_form)}<br><small class="muted">${esc(c.route)}</small>${c.properties.length ? `<br><small class="muted">${esc(c.properties.join(' · '))}</small>` : ''}</td>
+    <td>${catFlagChips(c) || '<span class="muted">—</span>'}</td><td>${c.in_basket ? 'כן' : 'לא'}</td><td>${c.is_prescription ? 'כן' : 'לא'}</td></tr>`).join('')}
+  </tbody></table>${list.length ? '' : empty('לא נמצאו תרופות', 'נסו לשנות את החיפוש או הסינון.')}</div>`;
+}
+
+/* ================================================================
    Marketing: prospects (ניהול מתעניינים)
    ================================================================ */
 const lastFu = p => [...p.followups].sort((a, b) => b.at.localeCompare(a.at))[0];
@@ -2551,7 +2671,7 @@ function saveProspectFu(form) {
   x.followups.push({ id: uid('PF'), at: wallToIso(d.at), by: me().id, text: d.text, next: d.next || null }); stamp(x); refresh(); toast('המעקב נוסף');
 }
 
-const VIEWS = { prospects: () => viewProspects(false), home: viewHome, cat: viewCat, round: viewRound, residents: viewResidents, resident: viewResidentFile, movements: viewMovements, handover: viewHandover, calls: viewCalls, events: viewEvents, meds: viewMeds, reports: viewReports, settings: viewSettings };
+const VIEWS = { prospects: () => viewProspects(false), catalog: viewCatalog, home: viewHome, cat: viewCat, round: viewRound, residents: viewResidents, resident: viewResidentFile, movements: viewMovements, handover: viewHandover, calls: viewCalls, events: viewEvents, meds: viewMeds, reports: viewReports, settings: viewSettings };
 const PANELS = { medorder: panelMedOrder, medhandling: panelMedHandling, intake: panelIntake, medrec: panelMedrec, prospect: panelProspect, contactlog: panelContactLog, res: panelResident, move: panelMove, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
 
 /* ================================================================
@@ -2702,6 +2822,11 @@ const IN = {
   'round-q': el => { UI.f.round.q = el.value; renderMain(); },
   f: el => { let v = el.type === 'checkbox' ? el.checked : el.value; if (el.dataset.date != null) { if (v && !parseD(v)) { el.classList.add('inv'); return; } v = v ? parseD(v) : ''; } UI.f[el.dataset.view][el.dataset.k] = v; renderMain(); },
   'call-res': el => { const r = residentFromLabel(el.value), loc = el.form.elements.location; if (r && (!loc.value || /^דירה /.test(loc.value))) loc.value = 'דירה ' + r.apartment; },
+  'cat-pick': el => { // picking a catalogue entry fills the route (still editable) and shows the read-only drug details
+    const c = catFromPick(el.value), f = el.form, box = $('#cat-info'); if (box) box.innerHTML = catInfo(c);
+    if (c && f.dataset.pick !== c.reg_num) { f.elements.route.value = c.route; if (!f.elements.dose.value) f.elements.dose.value = doseFor(c); }
+    f.dataset.pick = c ? c.reg_num : '';
+  },
   vital: el => { const v = el.value.trim(), def = VITALS[el.dataset.k], bad = v && def.ok && !def.ok(v); el.classList.toggle('inv', !!bad); const er = el.form.querySelector(`.err[data-for="${el.dataset.k}"]`); er.textContent = bad ? 'מחוץ לטווח התקין – יסומן באדום' : ''; },
 };
 const CH = {
@@ -2730,6 +2855,12 @@ const CH = {
       for (const r of S.residents) for (const n of r.nursing_level) if (n.level === old) n.level = v;
     } else S.settings.functional_levels_off = el.checked ? S.settings.functional_levels_off.filter(x => x !== old) : [...S.settings.functional_levels_off, old];
     refresh(); toast('הרשימה עודכנה');
+  },
+  'drug-flag': el => { // D7: admin edits overlay flags only; history kept on the entry
+    if (!may('catalog.edit')) return toast(NO_PERM_ACT);
+    const c = catByReg(el.dataset.reg), k = el.dataset.k; if (!c || !['high_alert', 'requires_double_check', 'controlled_schedule', 'in_basket'].includes(k)) return;
+    const from = c[k], to = el.type === 'checkbox' ? el.checked : el.value; if (from === to) return;
+    c[k] = to; (c.flag_history ||= []).push({ at: nowIso(), by: me().id, k, from, to }); refresh(); toast(`${c.name_en}: הסימון עודכן`);
   },
   'evtype-active': el => { byId(S.event_types, el.dataset.id).active = el.checked; save(); },
   'import-json': el => {
