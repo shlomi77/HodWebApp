@@ -345,10 +345,16 @@ tr.stopped td{opacity:.55}
 .ucard b{display:block;font-size:16.5px}
 .ucard small{color:var(--muted);font-size:13.5px}
 
-.toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);border-radius:12px;padding:10px 16px;box-shadow:var(--shadow);z-index:60;font-size:15px;font-weight:600;max-width:calc(100% - 32px)}
+.toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);border-radius:12px;padding:10px 16px;box-shadow:var(--shadow);z-index:80;font-size:15px;font-weight:600;max-width:calc(100% - 32px)}
 .kbdhelp{font-size:12.5px;color:var(--muted)}
 .kbdhelp kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;background:var(--surface)}
 .print-only{display:none}
+
+/* modal (second signer): blocks the page, the context underneath stays */
+#modal{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:16px}
+#modal .modal-back{position:absolute;inset:0;background:rgba(10,20,28,.5)}
+#modal .modal{position:relative;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);width:min(460px,100%);max-height:90vh;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:12px}
+#modal h2{margin:0;font-size:20px;font-weight:800;display:flex;align-items:center;gap:8px}
 
 /* ---------- tablet & phone ---------- */
 @media (max-width:1180px){
@@ -402,6 +408,7 @@ tr.stopped td{opacity:.55}
 <div class="demo-strip" role="note">גרסת הדגמה – נתונים פיקטיביים בלבד</div>
 <div id="app"></div>
 <aside id="panel" hidden aria-label="חלונית צד"></aside>
+<div id="modal" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 <script>
 'use strict';
@@ -693,6 +700,8 @@ function seed() {
   note(40, { text: `יציאה זמנית של ${g(byId(D.residents, 'R027'), 'הדייר', 'הדיירת')} מדירה ${A('R027')} – עדיין לא ${g(byId(D.residents, 'R027'), 'חזר', 'חזרה')}. לבדוק מול המשפחה לפני הסבב.`, subject: 'כללי', resident_id: 'R027', unit_id: 'A2', needs_action: true, assignee: 'role:reception', by: 'U2' });
   delete D.settings0;
 
+  // D6 demo: one severe and one moderate allergy that match catalogue ingredients (severity forced in the allergy migration below)
+  byId(D.residents, 'R005').allergies = ['פניצילין']; byId(D.residents, 'R007').allergies = ['סולפה'];
   // mock drug catalogue (R8): registry-shaped but entirely fictitious. DEMO-### numbers, made-up uppercase Latin brand and ingredient names,
   // made-up Hebrew names. Only the ATC code strings are real (public WHO classification, level 4). Flags: B in basket, R prescription,
   // H high alert, D requires double check, C controlled.
@@ -765,6 +774,9 @@ function seed() {
     if (k) r.med_handling = { intake: pick(['עצמאי', 'בהשגחה', 'ע״י צוות']), purchase: pick(['עצמאי', 'משפחה', 'מוסד']) };
   }
   D.med_admin = [];
+  // double-check drugs (R11) scheduled today for three residents who are at home
+  for (const [rid, reg, times, dose] of [['R003', 'DEMO-013', ['08:00', '20:00'], '10 יחידות'], ['R011', 'DEMO-014', ['20:00'], '1 טבליה'], ['R020', 'DEMO-015', ['08:00'], '0.4 מ״ל']])
+    mkOrder(byId(D.residents, rid), catReg(reg), { times, dose, start: addDays(today(), -60) });
   // PRN orders (R9) with all three rules, and a few gives today / yesterday so the interval and 24 h max blocks can be demoed
   const PRN = [['R002', 'DEMO-010', 'כאב או חום מעל 38', 6, 4, [60]], ['R004', 'DEMO-023', 'כאבי מפרקים', 8, 3, [60 * 20]], ['R008', 'DEMO-026', 'קשיי הירדמות', 24, 1, [60 * 22]],
     ['R012', 'DEMO-010', 'כאב בברך', 6, 4, [60 * 9, 60 * 3]], ['R016', 'DEMO-029', 'כאב בחזה', 0.25, 3, []], ['R021', 'DEMO-033', 'בחילה', 8, 3, [60 * 30]],
@@ -845,7 +857,8 @@ function seed() {
   }
   // allergies: migrate the seeded allergy names into structured records
   const ALG_TYPE = { 'פניצילין': 'תרופה', 'סולפה': 'תרופה', 'אספירין': 'תרופה', 'אגוזים': 'מזון', 'לטקס': 'אחר' }, ALG_REACT = ['פריחה', 'גרד', 'נפיחות', 'קוצר נשימה', 'בחילה'];
-  D.residents.forEach((r, i) => { for (const a of r.allergies || []) { const t = ago(60 * 24 * (30 + i * 7)); D.clin.allergies.push({ id: 'AL' + (D.clin.allergies.length + 1), resident_id: r.id, at: dkey(t), allergen: a, type: ALG_TYPE[a] || 'אחר', reaction: ALG_REACT[i % ALG_REACT.length], severity: ['קלה', 'בינונית', 'חמורה'][i % 3], by: 'U3', created_by: 'U3', created_at: t, updated_by: 'U3', updated_at: t }); } delete r.allergies; });
+  const ALG_SEV = { R005: 'חמורה', R007: 'בינונית' };
+  D.residents.forEach((r, i) => { for (const a of r.allergies || []) { const t = ago(60 * 24 * (30 + i * 7)); D.clin.allergies.push({ id: 'AL' + (D.clin.allergies.length + 1), resident_id: r.id, at: dkey(t), allergen: a, type: ALG_TYPE[a] || 'אחר', reaction: ALG_REACT[i % ALG_REACT.length], severity: ALG_SEV[r.id] || ['קלה', 'בינונית', 'חמורה'][i % 3], by: 'U3', created_by: 'U3', created_at: t, updated_by: 'U3', updated_at: t }); } delete r.allergies; });
   // diagnoses: 1–3 generic diagnoses for most residents
   const DX = [['יתר לחץ דם', 'I10'], ['סוכרת סוג 2', 'E11'], ['אוסטאופורוזיס', 'M81'], ['אי ספיקת לב', 'I50'], ['דמנציה קלה', 'F03'], ['פרפור פרוזדורים', 'I48'], ['היפותירואידיזם', 'E03'], ['דלקת מפרקים ניוונית', 'M19'], ['ירידה בשמיעה', 'H91'], ['קטרקט', 'H26']];
   D.residents.forEach((r, i) => { if (i % 6 === 5) return; const k = 1 + (i % 3); for (let j = 0; j < k; j++) { const [dx, code] = DX[(i * 3 + j * 4) % DX.length], dt = addDays(today(), -(60 + ((i * 37 + j * 113) % 2500))), by = j % 2 ? 'U2' : 'U3'; D.clin.diagnoses.push({ id: 'DX' + (D.clin.diagnoses.length + 1), resident_id: r.id, at: dt, diagnosis: dx, code: j === 2 ? '' : code, status: (i + j) % 5 === 4 ? 'past' : 'active', doctor: DOCS[(i + j) % 3], by, created_by: by, created_at: at(dt, '12:00'), updated_by: by, updated_at: at(dt, '12:00') }); } });
@@ -881,7 +894,7 @@ function seedActivity() {
   const nowM = minOfDay();
   for (const o of S.med_orders.filter(x => x.active)) for (const tm of o.times) {
     const r = byId(S.residents, o.resident_id); if (openMove(r.id) || r.status !== 'active') continue;
-    if (hm2min(tm) + 45 < nowM) { const ng = R() < .06; S.med_admin.push({ id: uid('MA'), order_id: o.id, date: t, time: tm, status: ng ? 'not_given' : 'given', reason: ng ? 'סירב' : null, note: '', at: at(t, tm), by: 'U3', history: [] }); }
+    if (hm2min(tm) + 45 < nowM) { const ng = R() < .06, dc = !ng && drugOf(o)?.requires_double_check; S.med_admin.push({ id: uid('MA'), order_id: o.id, date: t, time: tm, status: ng ? 'not_given' : 'given', reason: ng ? 'סירב' : null, note: '', at: at(t, tm), by: 'U3', history: [], ...(dc ? { second_check_by: 'U2', second_check_at: at(t, tm) } : {}) }); }
   }
 }
 
@@ -904,7 +917,7 @@ const uname = id => (id && id.startsWith('role:')) ? ROLES[id.slice(5)] : (byId(
 let _lastTouch = 0;
 function touch() { if (!SESSION) return; const n = Date.now(); if (n - _lastTouch > 5000) { _lastTouch = n; SESSION.last = n; saveSession(); } }
 function checkIdle() { if (SESSION && Date.now() - SESSION.last > IDLE_MS) { logout(true); } }
-function logout(idle) { SESSION = null; saveSession(); UI.loggedOutIdle = !!idle; UI.panel = null; UI.edit = null; UI.dirty = false; render(); }
+function logout(idle) { SESSION = null; saveSession(); UI.loggedOutIdle = !!idle; UI.panel = null; UI.modal = null; renderModal(); UI.edit = null; UI.dirty = false; render(); }
 
 /* ---------- permissions: one table, checked in the UI only (demo) ---------- */
 const ALL = Object.keys(ROLES);
@@ -1002,6 +1015,31 @@ function allergenMatches(allergen, c) {
   const keys = [c.name_he, c.name_en, ...c.active_ingredients.flatMap(i => [i.name, i.name_he, i.allergy_class])].filter(Boolean).map(norm);
   return keys.some(k => k === a || (a.length >= 3 && k.includes(a)));
 }
+// D6 gate, one shared helper: severe (חמורה) match blocks, any other match warns and needs an acknowledgment
+function allergyConflict(r, c) {
+  if (!r || !c) return { level: null, allergens: [] };
+  const hits = allergyRecs(r).filter(a => allergenMatches(a.allergen, c)), severe = hits.filter(a => a.severity === 'חמורה');
+  if (severe.length) return { level: 'block', allergens: severe.map(a => a.allergen) };
+  return hits.length ? { level: 'warn', allergens: hits.map(a => a.allergen) } : { level: null, allergens: [] };
+}
+const allergyBlockMsg = ac => `אסור – רגישות חמורה ל${ac.allergens.join(', ')}`;
+const ACK_LABEL = 'קראתי את אזהרת הרגישות ואני ממשיך/ה', ACK_ERR = 'סמנו שקראתם את אזהרת הרגישות';
+function allergyBox(ac, name = 'allergy_ack') {
+  if (ac.level === 'block') return `<p class="note-inline red" style="margin:0" role="alert">${esc(allergyBlockMsg(ac))}</p>`;
+  if (ac.level !== 'warn') return '';
+  return `<div class="note-inline" role="alert">⚠ אזהרת רגישות: ${esc(ac.allergens.join(', '))} – התרופה מכילה רכיב מאותה קבוצה.
+    <div><label class="cb"><input type="checkbox" name="${name}"> ${ACK_LABEL}</label></div><span class="err" data-for="${name}"></span></div>`;
+}
+/* R11 second signer: shared by the double-check give and the R12 controlled count */
+function verifySigner(userId, pin) {
+  const u = userId && byId(S.users, userId);
+  if (!u) return { err: 'בחרו משתמש/ת לחתימה השנייה' };
+  if (me() && u.id === me().id) return { err: 'החתימה השנייה חייבת להיות של משתמש/ת אחר/ת' };
+  if (!u.active || !can(u.role, 'meds.run')) return { err: 'המשתמש/ת לא מורשה/ית לחתום' };
+  if (String(pin ?? '').trim() !== u.pin) return { err: 'קוד שגוי' };
+  return { user: u };
+}
+const signerCandidates = () => S.users.filter(u => u.active && u.id !== me()?.id && can(u.role, 'meds.run'));
 const nursingNow = r => r.nursing_level?.at(-1)?.level || '—'; // מצב תפקודי (functional status)
 const functionalLevels = (cur) => S.settings.functional_levels.filter(x => !S.settings.functional_levels_off.includes(x) || x === cur);
 function avColor(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 38% 42%)`; }
@@ -1107,6 +1145,23 @@ function renderPanel() {
 }
 function openPanel(p) { UI.panel = p; UI.confirm = null; renderPanel(); setTimeout(() => { const f = $('#panel [autofocus]') || $('#panel .x'); f && f.focus(); }, 0); }
 function closePanel() { UI.panel = null; renderPanel(); }
+/* second-signer modal (R11 / R12): another active meds.run user enters their PIN; nobody logs out (D4) */
+function openSignerModal(m) { UI.modal = m; renderModal(); setTimeout(() => $('#modal select')?.focus(), 0); }
+function closeModal(cancelled) { const m = UI.modal; UI.modal = null; renderModal(); if (cancelled && m?.onCancel) m.onCancel(); }
+function renderModal() {
+  const M = $('#modal'); if (!M) return; const m = UI.modal;
+  if (!m || !me()) { M.hidden = true; M.innerHTML = ''; return; }
+  const cand = signerCandidates();
+  M.innerHTML = `<div class="modal-back"></div><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-t">
+    <h2 id="modal-t">${ic('shield')} ${esc(m.title || 'נדרש אימות נוסף')}</h2>
+    ${m.sub ? `<div>${m.sub}</div>` : ''}
+    <form class="form" data-submit="signer" autocomplete="off">
+      ${fld(m.who || 'חתימה שנייה – משתמש/ת', `<select name="signer">${opt('', 'בחרו…', '')}${cand.map(u => opt(u.id, `${u.name} (${ROLES[u.role]})`, '')).join('')}</select>`, 'signer', 1, cand.length ? '' : 'אין משתמש/ת נוסף/ת פעיל/ה שמורשה לחתום')}
+      ${fld('קוד אישי (PIN) של החותם/ת', `<input name="pin" type="password" inputmode="numeric" maxlength="6" placeholder="••••">`, 'pin', 1)}
+      <div class="actions"><button class="btn pri">אישור וחתימה</button><button type="button" class="btn" data-act="modal-cancel">ביטול</button></div>
+    </form></div>`;
+  M.hidden = false;
+}
 function refresh() { save(); renderNav(); renderMain(); renderPanel(); }
 let _toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(_toastT); _toastT = setTimeout(() => t.hidden = true, 3200); }
@@ -1668,7 +1723,7 @@ function tabResEvents(r) {
 function tabNursing(r) {
   const orders = S.med_orders.filter(o => o.resident_id === r.id && o.active), d = today();
   const times = [...new Set(orders.flatMap(o => o.times))].sort();
-  const cell = (o, t) => { if (!o.times.includes(t)) return '<td></td>'; const a = doseRec(o.id, d, t); const s = a?.status || 'pending'; return `<td class="n">${s === 'given' ? `<span class="chip ok">ניתן ${fT(a.at)}</span>` : s === 'not_given' ? `<span class="chip red" title="${esc(a.reason + (a.note ? ' – ' + a.note : ''))}">לא ניתן: ${esc(a.reason)}</span>` : '<span class="chip">ממתין</span>'}</td>`; };
+  const cell = (o, t) => { if (!o.times.includes(t)) return '<td></td>'; const a = doseRec(o.id, d, t); const s = a?.status || 'pending'; return `<td class="n">${s === 'given' ? `<span class="chip ok" title="${esc(uname(a.by) + (a.second_check_by ? ' · אימות כפול: ' + uname(a.second_check_by) : ''))}">ניתן ${fT(a.at)}</span>` : s === 'not_given' ? `<span class="chip red" title="${esc(a.reason + (a.note ? ' – ' + a.note : ''))}">לא ניתן: ${esc(a.reason)}</span>` : '<span class="chip">ממתין</span>'}</td>`; };
   const vit = S.vitals.filter(v => v.resident_id === r.id).sort((a, b) => b.at.localeCompare(a.at));
   const byType = {}; for (const v of vit) (byType[v.type] ||= []).length < 5 && byType[v.type].push(v);
   return `<h3 style="margin-top:0">טבלת מתן תרופות להיום (${fD(d)})</h3>
@@ -2086,6 +2141,21 @@ function prnState(o, now = Date.now()) {
   return { last, count, err };
 }
 const prnRules = o => `${esc(o.prn_indication || '—')} · כל ${o.prn_min_interval_h ?? '—'} ש׳ לפחות · עד ${o.prn_max_per_24h ?? '—'} ב-24 ש׳`;
+/* every give (scheduled + PRN) goes through one gate: D6 allergy match first, then the R11 second signer for double-check drugs.
+   proceed(extra) commits the med_admin row; extra carries allergy_ack and second_check_by / second_check_at. */
+function giveGate(o, ack, proceed) {
+  const r = res(o.resident_id), c = drugOf(o), ac = allergyConflict(r, c);
+  if (ac.level === 'block') return { err: allergyBlockMsg(ac) };
+  if (ac.level === 'warn' && !ack) return { needAck: ac };
+  const extra = ac.level === 'warn' ? { allergy_ack: { by: me().id, at: nowIso(), allergens: ac.allergens } } : {};
+  if (c?.requires_double_check) {
+    openSignerModal({ sub: `<p style="margin:0"><b>${esc(o.drug)}</b> · ${esc(o.dose)} · ${esc(fullName(r))}</p><p class="hint" style="margin:4px 0 0">תרופה שמחייבת אימות כפול. בחרו אח/ות או אחראי/ת משמרת נוסף/ת שיקליד/תקליד את הקוד האישי.</p>`,
+      onOk: u => proceed({ ...extra, second_check_by: u.id, second_check_at: nowIso() }), onCancel: () => toast('המנה לא סומנה – נדרש אימות כפול') });
+    return { pending: true };
+  }
+  proceed(extra); return { done: true };
+}
+const givenChip = a => `<span class="chip ok">ניתן ${fT(a.at)} · ${esc(uname(a.by))}${a.second_check_by ? ` · אימות: ${esc(uname(a.second_check_by))}` : ''}${a.allergy_ack ? ' · ⚠ אושרה אזהרת רגישות' : ''}</span>`;
 const prnLastTxt = s => `${s.last ? `ניתן לאחרונה ${fT(s.last.at)} (${fD(s.last.at).slice(0, 5)})` : 'טרם ניתן'} · ${s.count} ב-24 ש׳`;
 function medRoundOf(t) { const m = hm2min(t); return MED_ROUNDS.find(r => { const a = hm2min(r.from), b = hm2min(r.to); return a < b ? m >= a && m < b : m >= a || m < b; }); }
 function viewMeds() {
@@ -2102,17 +2172,18 @@ function viewMeds() {
     const m = openMove(r.id), away = !!m;
     const doses = (byRes[r.id] || []).flatMap(o => o.times.filter(t => medRoundOf(t).id === f.round).map(t => ({ o, t }))).sort((a, b) => a.t.localeCompare(b.t));
     const prn = !away && prnByRes[r.id] ? `<div class="prn"><span class="chip acc">לפי הצורך</span>${prnByRes[r.id].map(o => { const s = prnState(o);
-      return `<div class="dose"><span class="dn">${esc(o.drug)} <small>${esc(o.dose)} · ${esc(o.route)} · ${prnRules(o)}</small></span><span class="hint">${prnLastTxt(s)}</span>${canRun ? `<button class="btn sm" data-act="prn-give" data-o="${o.id}">מתן</button>` : ''}</div>`; }).join('')}</div>` : '';
+      return `<div class="dose"><span class="dn">${esc(o.drug)} <small>${esc(o.dose)} · ${esc(o.route)} · ${prnRules(o)}</small> ${catFlagChips(drugOf(o), false)}</span><span class="hint">${prnLastTxt(s)}</span>${canRun ? `<button class="btn sm" data-act="prn-give" data-o="${o.id}">מתן</button>` : ''}</div>`; }).join('')}</div>` : '';
     return `<div class="mres${away ? ' away' : ''}"><div><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))}</button><br><small class="muted">דירה ${esc(r.apartment)}</small> ${away ? `<span class="chip vio">${esc(MT[m.type].name)} – לא בבית</span>` : ''}${may('clinical.view') && allergyNames(r).length ? ` <span class="chip red">⚠ ${esc(allergyNames(r).join(', '))}</span>` : ''}
       ${canRun && !away ? `<div><button class="btn sm ghost" data-act="vitals" data-rid="${r.id}">מדדים</button></div>` : ''}</div><div>
       ${doses.map(({ o, t }) => { const a = doseRec(o.id, d, t), key = `${o.id}|${t}`;
         let ctl;
         if (away) ctl = '<span class="hint">לא לחלוקה – הדייר/ת מחוץ לבית</span>';
         else if (!a) ctl = !canRun ? '<span class="chip">ממתין</span>' : UI.open.ng === key ? `<span class="confirm">סיבה: <select id="ng-reason" aria-label="סיבה">${opt('', 'בחרו…', '')}${NOT_GIVEN.map(x => opt(x, x, '')).join('')}</select><input id="ng-note" type="text" placeholder="הערה (חובה בסיבה ״אחר״)" aria-label="הערה"><button class="btn sm danger" data-act="dose-ng" data-o="${o.id}" data-t="${t}">שמירה</button><button class="btn sm" data-act="dose-ng-cancel">ביטול</button><span class="err" id="ng-err"></span></span>`
-          : `<button class="btn sm ok" data-act="dose-give" data-o="${o.id}" data-t="${t}">ניתן</button><button class="btn sm" data-act="dose-ng-open" data-k="${key}">לא ניתן</button>`;
-        else ctl = `${a.status === 'given' ? `<span class="chip ok">ניתן ${fT(a.at)} · ${esc(uname(a.by))}</span>` : `<span class="chip red">לא ניתן: ${esc(a.reason)}${a.note ? ' – ' + esc(a.note) : ''}</span>`}
+          : UI.open.ack === key ? `<span class="confirm" role="alert">⚠ רגישות: ${esc(allergyConflict(r, drugOf(o)).allergens.join(', '))} <label class="cb"><input type="checkbox" id="ack-cb"> ${ACK_LABEL}</label><button class="btn sm ok" data-act="dose-give" data-ack="1" data-o="${o.id}" data-t="${t}">ניתן</button><button class="btn sm" data-act="dose-ack-cancel">ביטול</button><span class="err" id="ack-err"></span></span>`
+          : `<button class="btn sm ok" data-act="dose-give" data-o="${o.id}" data-t="${t}">ניתן</button><button class="btn sm" data-act="dose-ng-open" data-k="${key}">לא ניתן</button>${UI.open.doseErr?.key === key ? `<span class="err" role="alert">${esc(UI.open.doseErr.msg)}</span>` : ''}`;
+        else ctl = `${a.status === 'given' ? givenChip(a) : `<span class="chip red">לא ניתן: ${esc(a.reason)}${a.note ? ' – ' + esc(a.note) : ''}</span>`}
           ${canRun ? (UI.open.undo === key ? `<span class="confirm">סיבת ביטול: <input id="dose-undo-reason" type="text" aria-label="סיבת ביטול"><button class="btn sm danger" data-act="dose-undo" data-o="${o.id}" data-t="${t}">בטל</button><button class="btn sm" data-act="dose-undo-cancel">חזרה</button><span class="err" id="dose-undo-err"></span></span>` : `<button class="btn sm ghost" data-act="dose-undo-open" data-k="${key}">ביטול</button>`) : ''}`;
-        return `<div class="dose"><span class="dn"><span class="num">${t}</span> · ${esc(o.drug)} <small>${esc(o.dose)} · ${esc(o.route)}</small></span>${ctl}</div>`; }).join('')}${prn}</div></div>`;
+        return `<div class="dose"><span class="dn"><span class="num">${t}</span> · ${esc(o.drug)} <small>${esc(o.dose)} · ${esc(o.route)}</small> ${catFlagChips(drugOf(o), false)}</span>${ctl}</div>`; }).join('')}${prn}</div></div>`;
   }).join('')}</div>`).join('');
   return `<div class="ph"><h1>חלוקת תרופות</h1><span class="sub">${dow(d)} ${fD(d)}</span><span class="sp"></span>
     <div class="ptext">ניתנו <b class="num">${given}</b> מתוך <b class="num">${total}</b>${ng ? ` <span class="chip red">${ng} לא ניתנו</span>` : ''}</div></div>
@@ -2131,8 +2202,9 @@ function panelPrnGive(p) {
   return `<div class="p-h"><div><h2>מתן לפי הצורך</h2><div class="meta">${esc(fullName(r))} · דירה ${esc(r.apartment)}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
   <div class="p-b"><dl class="kv"><dt>תרופה</dt><dd>${esc(o.drug)}</dd><dt>מינון</dt><dd>${esc(o.dose)} · ${esc(o.route)}</dd><dt>התוויה בהוראה</dt><dd>${esc(o.prn_indication || '—')}</dd>
     <dt>כללים</dt><dd>מרווח של ${o.prn_min_interval_h} ש׳ לפחות · עד ${o.prn_max_per_24h} מנות ב-24 שעות</dd><dt>מתן אחרון</dt><dd>${s.last ? `${fDT(s.last.at)} · ${esc(uname(s.last.by))}` : 'טרם ניתן'} <span class="muted">(${s.count} ב-24 השעות האחרונות)</span></dd></dl>
-    ${s.err ? `<p class="note-inline red" style="margin:0">${esc(s.err)}</p>` : ''}
+    ${s.err ? `<p class="note-inline red" style="margin:0">${esc(s.err)}</p>` : ''}${drugOf(o)?.requires_double_check ? '<p class="note-inline info" style="margin:0">תרופה שמחייבת אימות כפול – אחרי השמירה יידרש קוד של אח/ות נוסף/ת.</p>' : ''}
     <form class="form" data-submit="prngive" data-o="${o.id}" autocomplete="off">
+      ${allergyBox(allergyConflict(r, drugOf(o)))}
       ${fld('התוויה למתן הזה', `<textarea name="indication_text" autofocus>${esc(o.prn_indication || '')}</textarea>`, 'indication_text', 1, 'אפשר לעדכן לפי המצב בפועל')}
       <span class="err" data-for="prn"></span>
       <div class="actions"><button class="btn ok">ניתן עכשיו</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
@@ -2144,9 +2216,13 @@ function savePrnGive(form) {
   else if (openMove(r.id) || isGone(r)) e.prn = 'הדייר/ת לא נמצא/ת בבית – אין מתן';
   else { const s = prnState(o); if (s.err) e.prn = s.err; } // D10: too early / over the 24 h max → blocked
   if (!showErrors(form, e)) return;
-  const t = nowIso();
-  S.med_admin.push({ id: uid('MA'), order_id: o.id, prn: true, date: today(), time: fT(t), status: 'given', indication_text: d.indication_text, at: t, by: me().id });
-  closePanel(); refresh(); toast(`${o.drug} ניתן/ה לפי הצורך ל${fullName(r)}`);
+  const g = giveGate(o, !!d.allergy_ack, extra => { // D6 + R11 apply to PRN gives too
+    if (prnState(o).err) return toast(prnState(o).err);
+    const t = nowIso();
+    S.med_admin.push({ id: uid('MA'), order_id: o.id, prn: true, date: today(), time: fT(t), status: 'given', indication_text: d.indication_text, at: t, by: me().id, ...extra });
+    closePanel(); refresh(); toast(`${o.drug} ניתן/ה לפי הצורך ל${fullName(r)}`);
+  });
+  if (g.err) showErrors(form, { prn: g.err }); else if (g.needAck) showErrors(form, { allergy_ack: ACK_ERR });
 }
 function panelVitals(p) {
   if (!mayVitals()) return null;
@@ -2439,7 +2515,7 @@ function medsSection(r) {
   ${list.length ? `<div class="tbl"><table><thead><tr>${canRun ? '<th><span class="sr">בחירה</span></th>' : ''}<th>תרופה</th><th>מינון ושעות</th><th>רופא/ה מרשם / עודכן ע״י</th><th>סוג</th><th>סטטוס</th><th>בדיקת נטילה אחרונה</th></tr></thead><tbody>
   ${list.map(o => { const li2 = lastIntake(o.id); return `<tr class="${o.active ? '' : 'stopped'}${f.sel.includes(o.id) ? ' sel' : ''}">
     ${canRun ? `<td><input type="checkbox" data-act="med-sel" data-id="${o.id}" ${f.sel.includes(o.id) ? 'checked' : ''} aria-label="בחירת ${esc(o.drug)}"></td>` : ''}
-    <td><b>${esc(o.brand ? `${o.brand} ${o.strength}` : o.drug)}</b>${o.generic ? `<br><small class="muted">${esc(o.generic)} ${esc(o.generic_dose || '')}</small>` : ''}${o.drug_reg_num ? `<br><small class="muted num">${esc(o.drug_reg_num)} · ${esc(o.dosage_form || '')}</small>` : ''}</td>
+    <td><b>${esc(o.brand ? `${o.brand} ${o.strength}` : o.drug)}</b>${o.generic ? `<br><small class="muted">${esc(o.generic)} ${esc(o.generic_dose || '')}</small>` : ''}${o.drug_reg_num ? `<br><small class="muted num">${esc(o.drug_reg_num)} · ${esc(o.dosage_form || '')}</small>` : ''}${catFlagChips(drugOf(o), false) ? `<br>${catFlagChips(drugOf(o), false)}` : ''}${o.allergy_ack ? `<br><span class="chip warn" title="${esc(uname(o.allergy_ack.by))} · ${fDT(o.allergy_ack.at)}">⚠ אושרה אזהרת רגישות: ${esc(o.allergy_ack.allergens.join(', '))}</span>` : ''}</td>
     <td>${esc(o.dose)} · ${esc(o.route)}<br><small class="muted num">${o.prn ? 'לפי הצורך' : esc(o.times.join(', '))}</small>${o.prn ? prnCell(o, canRun) : ''}</td>
     <td>${esc(o.prescriber || '—')}<br><small class="muted">עודכן ע״י ${esc(uname(o.updated_by))}${o.updated_at ? ' · ' + fD(o.updated_at) : ''}</small></td>
     <td><span class="chip ${o.kind === 'acute' ? 'warn' : 'blue'}">${MED_KIND[o.kind] || '—'}</span></td>
@@ -2452,7 +2528,7 @@ function medsSection(r) {
 function prnCell(o, canRun) {
   const s = prnState(o), hist = S.med_admin.filter(a => a.order_id === o.id && a.prn).sort((a, b) => b.at.localeCompare(a.at));
   return `<br><small>${prnRules(o)}</small><br><small class="muted">${prnLastTxt(s)}</small>
-    ${hist.length ? `<details><summary class="hint">היסטוריית מתן (${hist.length})</summary><ul class="hist">${hist.slice(0, 10).map(a => `<li><small class="num">${fDT(a.at)} · ${esc(uname(a.by))}</small><div>${esc(a.indication_text || '')}</div></li>`).join('')}</ul></details>` : ''}
+    ${hist.length ? `<details><summary class="hint">היסטוריית מתן (${hist.length})</summary><ul class="hist">${hist.slice(0, 10).map(a => `<li><small class="num">${fDT(a.at)} · ${esc(uname(a.by))}${a.second_check_by ? ` · אימות: ${esc(uname(a.second_check_by))}` : ''}${a.allergy_ack ? ' · ⚠ אושרה אזהרת רגישות' : ''}</small><div>${esc(a.indication_text || '')}</div></li>`).join('')}</ul></details>` : ''}
     ${canRun && o.active ? `<div style="margin-top:4px"><button class="btn sm" data-act="prn-give" data-o="${o.id}">מתן לפי הצורך</button></div>` : ''}`;
 }
 function medsActions(r) {
@@ -2475,6 +2551,7 @@ function panelMedOrder(p) {
     ${fld('תרופה מרשימת התרופות', `<input name="drug_pick" type="text" list="dl-cat" value="${c ? esc(catLabel(c)) : ''}" placeholder="חיפוש לפי שם, רכיב פעיל או מס׳ רישום" data-in="cat-pick" autofocus>
       <datalist id="dl-cat">${S.drug_catalog.map(x => `<option value="${esc(catLabel(x))}">`).join('')}</datalist>`, 'drug_pick', 1, o && !c ? `הוראה ישנה: ${esc(o.drug)} – בחרו את התרופה מהרשימה` : 'הבחירה ממלאת את צורת המתן ואת דרך המתן')}
     <div id="cat-info">${catInfo(c)}</div>
+    <div id="alg-box">${allergyBox(allergyConflict(r, c))}</div>
     <div class="frow">${fld('סוג', `<select name="kind">${opts(MED_KIND, v.kind)}</select>`, 'kind', 1)}${fld('מינון', `<input name="dose" type="text" value="${esc(v.dose)}" placeholder="1 טבליה">`, 'dose', 1)}${fld('דרך מתן', `<select name="route">${MED_ROUTES.map(x => opt(x, x, v.route)).join('')}</select>`, 'route', 1, 'ממולא מהרשימה, אפשר לשנות')}</div>
     <label class="cb"><input type="checkbox" name="prn" ${v.prn ? 'checked' : ''}> לפי הצורך (ללא שעות קבועות)</label>
     <div data-when="prn:off">${fld('שעות מתן', `<input name="times" type="text" value="${esc(v.times.join(', '))}" placeholder="08:00, 20:00">`, 'times', 1, 'שעות בפורמט 24 שעות, מופרדות בפסיק')}</div>
@@ -2492,6 +2569,8 @@ function saveMedOrder(form) {
   if (!may('meds.run')) return toast(NO_PERM_ACT);
   const o = form.dataset.id && byId(S.med_orders, form.dataset.id), r = res(form.dataset.rid), d = readForm(form), e = {}, c = catFromPick(d.drug_pick);
   if (!c) e.drug_pick = 'בחרו תרופה מרשימת התרופות';
+  const ac = allergyConflict(r, c); // D6 at order save: severe → block, other → acknowledgment required
+  if (ac.level === 'block') e.drug_pick = allergyBlockMsg(ac); else if (ac.level === 'warn' && !d.allergy_ack) e.allergy_ack = ACK_ERR;
   for (const k of ['dose', 'prescriber']) if (!d[k]) e[k] = 'שדה חובה';
   if (!d.start) e.start = 'שדה חובה';
   let times = [];
@@ -2504,7 +2583,8 @@ function saveMedOrder(form) {
   if (d.stop) { if (!d.stop_date) e.stop_date = 'שדה חובה'; else if (d.start && d.stop_date < d.start) e.stop_date = 'לא לפני תאריך ההתחלה'; else if (futureDate(d.stop_date)) e.stop_date = 'לא בעתיד'; if (!d.stop_reason) e.stop_reason = 'כתבו סיבה'; }
   if (!showErrors(form, e)) return;
   const data = { drug_reg_num: c.reg_num, dosage_form: c.dosage_form, ...drugFields(c), kind: d.kind, dose: d.dose, route: d.route, prn: !!d.prn, times: d.prn ? [] : times, prescriber: d.prescriber, start: d.start,
-    prn_indication: d.prn ? d.prn_indication : '', prn_min_interval_h: d.prn ? +d.prn_min_interval_h : null, prn_max_per_24h: d.prn ? +d.prn_max_per_24h : null };
+    prn_indication: d.prn ? d.prn_indication : '', prn_min_interval_h: d.prn ? +d.prn_min_interval_h : null, prn_max_per_24h: d.prn ? +d.prn_max_per_24h : null,
+    allergy_ack: ac.level === 'warn' ? { by: me().id, at: nowIso(), allergens: ac.allergens } : null };
   if (o) { Object.assign(o, data); if (d.stop) Object.assign(o, { active: false, stop_date: d.stop_date, stop_reason: d.stop_reason }); stamp(o); toast(d.stop ? 'ההוראה הופסקה' : 'ההוראה עודכנה'); }
   else { S.med_orders.push(stamp({ id: 'MO' + (1 + Math.max(0, ...S.med_orders.map(x => +x.id.slice(2)))), resident_id: r.id, ...data, active: true, stop_date: null, stop_reason: '' }, true)); toast('ההוראה נוספה'); }
   medF().sel = []; closePanel(); refresh();
@@ -2754,6 +2834,7 @@ const ACT = {
   gopen: el => openResident(el.dataset.id),
   drawer: el => openPanel({ type: 'res', id: el.dataset.id }),
   'close-panel': () => closePanel(),
+  'modal-cancel': () => closeModal(true),
   confirm: el => { UI.confirm = el.dataset.key; renderMain(); renderPanel(); setTimeout(() => ($('.confirm input') || $('.confirm button'))?.focus(), 0); },
   'confirm-cancel': () => { UI.confirm = null; renderMain(); renderPanel(); },
   print: el => { if (el.closest('#panel')) document.body.classList.add('print-panel'); window.print(); },
@@ -2857,8 +2938,22 @@ const ACT = {
   'ev-action-done': el => { const e = byId(S.events, el.dataset.id), a = e.review.actions.find(x => x.id === el.dataset.a); a.done_at = el.checked ? nowIso() : null; stamp(e); refresh(); },
   'ev-action-waive': el => { const e = byId(S.events, el.dataset.id), a = e.review.actions.find(x => x.id === el.dataset.a); a.waived = el.checked; stamp(e); refresh(); },
   // meds
-  'meds-round': el => { UI.f.meds.round = el.dataset.v; UI.open.ng = UI.open.undo = null; renderMain(); },
-  'dose-give': el => { if (!may('meds.run')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); const { o, t } = el.dataset; if (doseRec(o, today(), t)) return toast('המנה כבר סומנה – כדי לשנות, בטלו קודם'); S.med_admin.push({ id: uid('MA'), order_id: o, date: today(), time: t, status: 'given', reason: null, note: '', at: nowIso(), by: me().id, history: [] }); save(); renderMain(); },
+  'meds-round': el => { UI.f.meds.round = el.dataset.v; UI.open.ng = UI.open.undo = UI.open.ack = UI.open.doseErr = null; renderMain(); },
+  'dose-give': el => {
+    if (!may('meds.run')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
+    const { o, t } = el.dataset, ord = byId(S.med_orders, o), key = `${o}|${t}`; if (!ord || ord.prn || !ord.active || !ord.times.includes(t)) return;
+    if (doseRec(o, today(), t)) return toast('המנה כבר סומנה – כדי לשנות, בטלו קודם');
+    const ackStep = el.dataset.ack === '1', ack = ackStep && !!$('#ack-cb')?.checked;
+    if (ackStep && !ack) { const er = $('#ack-err'); if (er) er.textContent = ACK_ERR; $('#ack-cb')?.focus(); return; }
+    const g = giveGate(ord, ack, extra => {
+      if (doseRec(o, today(), t)) return;
+      S.med_admin.push({ id: uid('MA'), order_id: o, date: today(), time: t, status: 'given', reason: null, note: '', at: nowIso(), by: me().id, history: [], ...extra });
+      UI.open.ack = UI.open.doseErr = null; save(); renderMain();
+    });
+    if (g.err) { UI.open.doseErr = { key, msg: g.err }; UI.open.ack = null; renderMain(); toast(g.err); }
+    else if (g.needAck) { UI.open.ack = key; UI.open.ng = null; renderMain(); setTimeout(() => $('#ack-cb')?.focus(), 0); }
+  },
+  'dose-ack-cancel': () => { UI.open.ack = null; renderMain(); },
   'dose-ng-open': el => { UI.open.ng = el.dataset.k; UI.open.undo = null; renderMain(); setTimeout(() => $('#ng-reason')?.focus(), 0); },
   'dose-ng-cancel': () => { UI.open.ng = null; renderMain(); },
   'dose-ng': el => {
@@ -2894,6 +2989,7 @@ const IN = {
   'call-res': el => { const r = residentFromLabel(el.value), loc = el.form.elements.location; if (r && (!loc.value || /^דירה /.test(loc.value))) loc.value = 'דירה ' + r.apartment; },
   'cat-pick': el => { // picking a catalogue entry fills the route (still editable) and shows the read-only drug details
     const c = catFromPick(el.value), f = el.form, box = $('#cat-info'); if (box) box.innerHTML = catInfo(c);
+    const ab = $('#alg-box'); if (ab && f.dataset.pick !== (c?.reg_num || '')) ab.innerHTML = allergyBox(allergyConflict(res(f.dataset.rid), c)); // D6 live warning
     if (c && f.dataset.pick !== c.reg_num) { f.elements.route.value = c.route; if (!f.elements.dose.value) f.elements.dose.value = doseFor(c); }
     f.dataset.pick = c ? c.reg_num : '';
   },
@@ -2966,6 +3062,11 @@ const SUB = {
     S.clin.intake.push(stamp({ id: uid('IC'), resident_id: form.dataset.rid, order_ids: form.dataset.ids.split(','), at: nowIso(), by: me().id, result: d.result, note: d.note }, true)); medF().sel = []; closePanel(); refresh(); toast('בדיקת הנטילה נשמרה');
   },
   'prospect-fu': form => saveProspectFu(form),
+  signer: form => {
+    const m = UI.modal; if (!m) return; const d = readForm(form);
+    const v = verifySigner(d.signer, d.pin); if (v.err) return showErrors(form, { [v.err === 'קוד שגוי' ? 'pin' : 'signer']: v.err }); // the dose / count stays unsaved
+    closeModal(false); m.onOk(v.user);
+  },
   call: form => saveCall(form),
   event: (form, ev) => saveEvent(form, ev.submitter),
   'ev-review': form => {
@@ -3021,7 +3122,8 @@ document.addEventListener('keydown', ev => {
     if (ev.key === 'Enter' && items[UI.gsel]) { ev.preventDefault(); openResident(items[UI.gsel].dataset.id); return; }
     if (ev.key === 'Escape') { ev.target.value = ''; box.hidden = true; ev.target.blur(); return; }
   }
-  if (ev.key === 'Escape') { if (UI.confirm) { UI.confirm = null; renderMain(); renderPanel(); } else if (UI.open.visit || UI.open.ng || UI.open.undo || UI.open.adm) { UI.open.visit = UI.open.ng = UI.open.undo = UI.open.adm = null; renderMain(); } else if (UI.panel) closePanel(); return; }
+  if (ev.key === 'Escape' && UI.modal) { closeModal(true); return; }
+  if (ev.key === 'Escape') { if (UI.confirm) { UI.confirm = null; renderMain(); renderPanel(); } else if (UI.open.visit || UI.open.ng || UI.open.undo || UI.open.adm || UI.open.ack) { UI.open.visit = UI.open.ng = UI.open.undo = UI.open.adm = UI.open.ack = null; renderMain(); } else if (UI.panel) closePanel(); return; }
   if (ev.key === '/' && !typing && me()) { ev.preventDefault(); $('#gq')?.focus(); return; }
   if (ev.altKey && /^[0-9]$/.test(ev.key) && me()) { const n = navShortcuts()[ev.key === '0' ? 9 : +ev.key - 1]; if (n) { ev.preventDefault(); go('#/' + n.id); } }
   if (ev.key === 'Enter' && ev.target.id === 'undo-reason') { ev.preventDefault(); $('[data-act="undo-loc"]')?.click(); }
