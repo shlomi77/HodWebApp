@@ -1536,7 +1536,7 @@ function fileTabs(r) {
     { id: 'events', name: 'אירועים' }, { id: 'nursing', name: 'סיעוד ותרופות', perm: 'clinical.view' }].filter(t => !t.perm || may(t.perm));
 }
 // a resident file opened inside a category shows only that category's sections
-const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'followup', 'contacts', 'movements', 'vaccines', 'medreport', 'nursereport', 'fall', 'sos', 'service', 'diagnoses', 'injections', 'allergies', 'vitals', 'norton', 'morse', 'pain', 'bmi', 'meds', 'labs', 'meetings', 'events', 'tests', 'referrals'] }; // medical grows with each R7 commit, in menu order
+const CAT_SECTIONS = { admin: ['personal', 'contacts', 'contactlog', 'movements'], social: ['social', 'benefits'], medical: ['personal', 'followup', 'contacts', 'movements', 'vaccines', 'medreport', 'nursereport', 'fall', 'sos', 'service', 'diagnoses', 'injections', 'allergies', 'vitals', 'norton', 'morse', 'pain', 'bmi', 'meds', 'labs', 'meetings', 'events', 'tests', 'referrals', 'audit'] }; // medical grows with each R7 commit, in menu order
 const fileCtx = () => UI.route === 'cat' ? { cat: UI.params[0], rid: UI.params[1], tab: UI.params[2] } : { cat: null, rid: UI.params[0], tab: UI.params[1] };
 const fileDefaultTab = ctx => ctx.cat ? CAT_SECTIONS[ctx.cat][0] : 'personal';
 const fileHref = (ctx, rid, tab) => ctx.cat ? `#/cat/${ctx.cat}/${rid}/${tab}` : `#/resident/${rid}/${tab}`;
@@ -2640,9 +2640,57 @@ const MED_SECTIONS = {
       { label: 'יחידה', td: x => esc(x.unit || '') }, { label: 'טווח תקין', td: x => `<span class="num">${x.low !== '' && x.low != null ? esc(x.low) : '…'}–${x.high !== '' && x.high != null ? esc(x.high) : '…'}</span>` }, { label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }],
     rowCls: x => labOut(x) ? 'overdue' : '' },
   meds: { name: 'תרופות', icon: 'pill', render: r => medsSection(r), actions: r => medsActions(r) },
+  audit: { name: 'יומן ביקורת', icon: 'clip', render: r => auditSection(r), actions: () => '' }, // R14 (D17): last section, read-only
   events: { name: 'אירוע חריג', icon: 'alert', render: r => eventTable(visibleEvents().filter(e => e.resident_ids.includes(r.id)).sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))) + (!may('events.viewAll') ? '<p class="hint">מוצגים רק אירועים שדיווחת בעצמך.</p>' : ''),
     actions: r => `<button class="btn pri" data-act="new-event" data-rid="${r.id}">${ic('plus')} דווח אירוע חריג</button>` },
 };
+/* R14 (D16, D17): per-resident audit trail, derived from the stored records (no parallel log table) */
+const auditClip = (t, n = 90) => { t = String(t ?? ''); return t.length > n ? t.slice(0, n) + '…' : t; };
+const ORDER_KEYS = { drug: 'תרופה', dose: 'מינון', route: 'דרך מתן', times: 'שעות', kind: 'סוג', prescriber: 'רופא/ה', start: 'תאריך התחלה', prn: 'לפי הצורך', prn_indication: 'התוויה', prn_min_interval_h: 'מרווח מינימלי', prn_max_per_24h: 'מקסימום ב-24 ש׳' };
+function recSum(sec, x) {
+  const def = MED_SECTIONS[sec], r = res(x.resident_id); if (def.asmt) return `ציון ${x.score} · ${x.band}`;
+  return auditClip(def.fields.filter(fd => ['text', 'textarea', 'datalist', 'select'].includes(fd.type) && x[fd.k] !== '' && x[fd.k] != null).slice(0, 2).map(fd => {
+    const o = typeof fd.opts === 'function' ? fd.opts(r) : fd.opts; return fd.type === 'select' && o && !Array.isArray(o) ? (o[x[fd.k]] ?? x[fd.k]) : x[fd.k]; }).join(' · '));
+}
+function auditRows(r) {
+  const rows = [], add = (at, by, action, type, summary, sec) => at && rows.push({ at, by, action, type, summary, sec });
+  const adm = admissionOf(r); if (adm) add(adm.created_at || adm.start, adm.by, 'נוצר', 'קבלה לדיור', `כניסה לדיור ${fD(adm.start)}`, 'movements');
+  for (const [sec, def] of Object.entries(MED_SECTIONS)) { if (!def.coll) continue;
+    for (const x of clinOf(def.coll, r.id)) {
+      add(x.created_at, x.by || x.created_by, x.correction_of ? 'תוקן' : 'נוצר', def.name, x.correction_of ? `תיקון של ${x.correction_of} · סיבה: ${auditClip(x.correction_reason, 60)} · ${recSum(sec, x)}` : recSum(sec, x), sec);
+      for (const h of x.history || []) add(h.at, h.by, 'עודכן', def.name, 'שונו: ' + Object.keys(h.prev || {}).map(k => def.fields.find(f => f.k === k)?.label || k).join(', '), sec);
+      for (const t of x.task_log || []) add(t.at, t.by, 'משימה סומנה', def.name, `${auditClip(t.text, 60)} – ${t.done ? 'בוצע' : 'בוטל הסימון'}`, sec);
+      if (x.removed) add(x.removed.at, x.removed.by, 'הוסר', def.name, recSum(sec, x), sec);
+    } }
+  for (const v of S.vitals.filter(x => x.resident_id === r.id)) add(v.correction_of ? v.created_at : v.at, v.by, v.correction_of ? 'תוקן' : 'נוצר', 'מדדים', `${VITALS[v.type].name}: ${v.value}${v.correction_of ? ` · סיבה: ${auditClip(v.correction_reason, 60)}` : ''}`, 'vitals');
+  for (const c of S.contact_log.filter(x => x.resident_id === r.id)) { add(c.created_at, c.by || c.created_by, 'נוצר', 'יומן קשר', auditClip(c.summary), null); for (const h of c.history || []) add(h.edited_at, h.edited_by, 'עודכן', 'יומן קשר', auditClip(c.summary), null); }
+  if (may('meds.view')) { // D16: meds lines (med_admin, med_orders, intake) only with meds.view – hidden from admin
+    const orders = S.med_orders.filter(o => o.resident_id === r.id), byO = Object.fromEntries(orders.map(o => [o.id, o]));
+    for (const o of orders) {
+      add(o.created_at, o.created_by, 'נוצר', 'הוראת תרופה', `${o.drug} · ${o.prn ? 'לפי הצורך' : o.times.join(', ')}`, 'meds');
+      for (const h of o.history || []) add(h.at, h.by, 'עודכן', 'הוראת תרופה', `${o.drug} · ${h.stop ? `הוראה הופסקה: ${auditClip(h.stop.reason, 50)}` : 'שונו: ' + Object.keys(h.prev).map(k => ORDER_KEYS[k]).filter(Boolean).join(', ')}`, 'meds');
+      if (!o.active && o.stop_date && !(o.history || []).some(h => h.stop)) add(at(o.stop_date, '12:00'), o.updated_by, 'עודכן', 'הוראת תרופה', `${o.drug} · הוראה הופסקה: ${o.stop_reason || '—'}`, 'meds');
+    }
+    for (const a of S.med_admin.filter(x => byO[x.order_id])) { const o = byO[a.order_id], type = a.prn ? 'מתן לפי הצורך' : 'מתן תרופה', when = a.prn ? fDT(a.at) : `${fD(a.date)} ${a.time}`;
+      if (a.status === 'given') { add(a.at, a.by, 'ניתן', type, `${o.drug} · ${when}${a.indication_text ? ' · ' + auditClip(a.indication_text, 40) : ''}${a.allergy_ack ? ' · אושרה אזהרת רגישות' : ''}`, 'meds');
+        if (a.second_check_by) add(a.second_check_at || a.at, a.second_check_by, 'אימות כפול', type, `${o.drug} · ${when}`, 'meds'); }
+      else if (a.status === 'not_given') add(a.at, a.by, 'לא ניתן', type, `${o.drug} · ${when} · ${a.reason}${a.note ? ' – ' + auditClip(a.note, 40) : ''}`, 'meds');
+      else if (a.status === 'voided') add(a.at, a.by, 'בוטל בתיקון', type, `${o.drug} · ${when} · סיבה: ${auditClip(a.correction_reason, 60)}`, 'meds');
+    }
+    for (const x of S.clin.intake.filter(y => y.resident_id === r.id)) add(x.at, x.by, 'בדיקת נטילה', 'בדיקת נטילה', `${x.order_ids.map(id => byO[id]?.drug).filter(Boolean).join(', ')} · ${INTAKE_RESULT[x.result] || ''}`, 'meds');
+  }
+  return rows.sort((a, b) => b.at.localeCompare(a.at));
+}
+function auditSection(r) {
+  const f = F('med_audit', { type: '', from: '', to: '' }), all = auditRows(r), types = [...new Set(all.map(x => x.type))].sort();
+  const list = all.filter(x => (!f.type || x.type === f.type) && (!f.from || dkey(x.at) >= f.from) && (!f.to || dkey(x.at) <= f.to)), shown = list.slice(0, 300);
+  const dateF = (k, label) => `<input type="text" inputmode="numeric" data-date placeholder="${label} dd/mm/yyyy" maxlength="10" data-ch="f" data-view="med_audit" data-k="${k}" value="${fD(f[k])}" aria-label="${label}" style="width:170px">`;
+  return `<p class="hint" style="margin:0 0 8px">לקריאה בלבד. נבנה מהרשומות השמורות: יצירה, עדכון, תיקון, הסרה ומתן תרופות.${may('meds.view') ? '' : ' רשומות תרופות לא מוצגות בתפקיד הנוכחי.'}</p>
+  <div class="filters"><select data-ch="f" data-view="med_audit" data-k="type" aria-label="סוג רשומה">${opt('', 'כל הסוגים', f.type)}${types.map(t => opt(t, t, f.type)).join('')}</select>${dateF('from', 'מתאריך')}${dateF('to', 'עד תאריך')}<span class="sub muted">${list.length} רשומות</span></div>
+  ${shown.length ? `<div class="tbl"><table><thead><tr><th>זמן</th><th>משתמש/ת</th><th>פעולה</th><th>סוג</th><th>תקציר</th><th></th></tr></thead><tbody>
+  ${shown.map(x => `<tr><td class="n">${fDT(x.at)}</td><td>${esc(uname(x.by))}</td><td><span class="chip ${{ 'תוקן': 'warn', 'בוטל בתיקון': 'red', 'הוסר': 'red', 'לא ניתן': 'red', 'ניתן': 'ok', 'אימות כפול': 'blue' }[x.action] || ''}">${esc(x.action)}</span></td><td>${esc(x.type)}</td><td>${esc(x.summary)}</td>
+    <td>${x.sec ? `<a href="#/cat/medical/${r.id}/${x.sec}">לסעיף</a>` : ''}</td></tr>`).join('')}</tbody></table></div>${list.length > shown.length ? `<p class="hint">מוצגות ${shown.length} הרשומות האחרונות. צמצמו בעזרת הסינון.</p>` : ''}` : empty('אין רשומות להצגה', 'נסו לשנות את הסינון.')}`;
+}
 /* medications tab (R7b): extends S.med_orders without breaking #/meds (drug / active / times / prn kept) */
 const medF = () => F('med_meds', { kind: '', show: 'active', q: '', sel: [] });
 const lastIntake = oid => S.clin.intake.filter(x => x.order_ids.includes(oid)).sort((a, b) => b.at.localeCompare(a.at))[0];
@@ -2734,7 +2782,9 @@ function saveMedOrder(form) {
   const data = { drug_reg_num: c.reg_num, dosage_form: c.dosage_form, ...drugFields(c), kind: d.kind, dose: d.dose, route: d.route, prn: !!d.prn, times: d.prn ? [] : times, prescriber: d.prescriber, start: d.start,
     prn_indication: d.prn ? d.prn_indication : '', prn_min_interval_h: d.prn ? +d.prn_min_interval_h : null, prn_max_per_24h: d.prn ? +d.prn_max_per_24h : null,
     allergy_ack: ac.level === 'warn' ? { by: me().id, at: nowIso(), allergens: ac.allergens } : null };
-  if (o) { Object.assign(o, data); if (d.stop) Object.assign(o, { active: false, stop_date: d.stop_date, stop_reason: d.stop_reason }); stamp(o); toast(d.stop ? 'ההוראה הופסקה' : 'ההוראה עודכנה'); }
+  if (o) { const prev = {}; for (const k of Object.keys(data)) if (k !== 'allergy_ack' && JSON.stringify(o[k] ?? null) !== JSON.stringify(data[k] ?? null)) prev[k] = o[k] ?? null; // R14: order edits keep history[]
+    if (Object.keys(prev).length || d.stop) (o.history ||= []).push({ at: nowIso(), by: me().id, prev, ...(d.stop ? { stop: { date: d.stop_date, reason: d.stop_reason } } : {}) });
+    Object.assign(o, data); if (d.stop) Object.assign(o, { active: false, stop_date: d.stop_date, stop_reason: d.stop_reason }); stamp(o); toast(d.stop ? 'ההוראה הופסקה' : 'ההוראה עודכנה'); }
   else { S.med_orders.push(stamp({ id: 'MO' + (1 + Math.max(0, ...S.med_orders.map(x => +x.id.slice(2)))), resident_id: r.id, ...data, active: true, stop_date: null, stop_reason: '' }, true)); toast('ההוראה נוספה'); }
   medF().sel = []; closePanel(); refresh();
 }
