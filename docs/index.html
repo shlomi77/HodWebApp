@@ -923,7 +923,7 @@ function seedAssessments(D) {
     const nort = lv => Object.fromEntries(NORTON_ITEMS.map((it, j) => [it.k, String(Math.max(1, Math.min(4, lv - ((i + j) % 2))))]));
     if (two) push('norton', 45 + i, nort(4), 'U3');
     push('norton', i === 1 ? 10 : recent, i === 1 ? nort(2) : nort(4 - i % 3), by);
-    const morse = hi => ({ history: hi ? '25' : '0', secondary: i % 3 ? '15' : '0', aid: hi ? '15' : '0', iv: '0', gait: hi ? '10' : '0', mental: '0' });
+    const morse = hi => ({ fall_history: hi ? '25' : '0', secondary: i % 3 ? '15' : '0', aid: hi ? '15' : '0', iv: '0', gait: hi ? '10' : '0', mental: '0' });
     if (two) push('morse', 50 + i, morse(false), 'U3');
     push('morse', i === 0 ? 35 : recent, morse(i % 4 === 1), by);
     if (two) push('pain', 20 + i, { tool: 'nrs', nrs: '2' }, 'U3');
@@ -2462,10 +2462,11 @@ const NO_PERM_ACT = 'אין הרשאה לפעולה הזו בתפקיד הנוכ
 const clinOf = (coll, rid) => (S.clin[coll] || []).filter(x => x.resident_id === rid);
 /* R15 (D1, D18, D19, D20): four light nursing assessments (הדגמה). Score, band and next_due are computed, never typed */
 const scoreOpts = (labels, vals) => Object.fromEntries(labels.map((l, i) => [String(vals ? vals[i] : i + 1), `${vals ? vals[i] : i + 1} – ${l}`]));
+// item keys must not reuse record keys (id, at, by, history, notes, score, band, next_due, correction_of, superseded_by)
 const NORTON_ITEMS = [['physical', 'מצב גופני', ['גרוע מאוד', 'גרוע', 'סביר', 'טוב']], ['mental', 'מצב הכרה', ['חסר/ת תגובה', 'מבולבל/ת', 'אדיש/ה', 'ער/ה']],
   ['activity', 'פעילות', ['מרותק/ת למיטה', 'מרותק/ת לכיסא', 'הולך/ת בעזרה', 'הולך/ת לבד']], ['mobility', 'ניידות', ['ללא תנועה', 'מוגבלת מאוד', 'מוגבלת מעט', 'מלאה']],
   ['incontinence', 'שליטה בסוגרים', ['שתן וצואה', 'בדרך כלל שתן', 'לעיתים', 'שליטה מלאה']]].map(([k, label, l]) => ({ k, label, type: 'select', opts: scoreOpts(l), req: 1 }));
-const MORSE_ITEMS = [['history', 'היסטוריה של נפילות (3 חודשים אחרונים)', ['לא', 'כן'], [0, 25]], ['secondary', 'אבחנה משנית', ['לא', 'כן'], [0, 15]],
+const MORSE_ITEMS = [['fall_history', 'היסטוריה של נפילות (3 חודשים אחרונים)', ['לא', 'כן'], [0, 25]], ['secondary', 'אבחנה משנית', ['לא', 'כן'], [0, 15]],
   ['aid', 'עזר הליכה', ['ללא / במיטה / עזרת צוות', 'קביים / מקל / הליכון', 'נשען/ת על רהיטים'], [0, 15, 30]], ['iv', 'עירוי / וריד פתוח', ['לא', 'כן'], [0, 20]],
   ['gait', 'הליכה', ['תקינה / במיטה / כיסא גלגלים', 'חלשה', 'לקויה'], [0, 10, 20]], ['mental', 'מצב מנטלי', ['מודע/ת למגבלות', 'שוכח/ת את המגבלות'], [0, 15]]]
   .map(([k, label, l, v]) => ({ k, label, type: 'select', opts: scoreOpts(l, v), req: 1 }));
@@ -2658,7 +2659,7 @@ function auditRows(r) {
   for (const [sec, def] of Object.entries(MED_SECTIONS)) { if (!def.coll) continue;
     for (const x of clinOf(def.coll, r.id)) {
       add(x.created_at, x.by || x.created_by, x.correction_of ? 'תוקן' : 'נוצר', def.name, x.correction_of ? `תיקון של ${x.correction_of} · סיבה: ${auditClip(x.correction_reason, 60)} · ${recSum(sec, x)}` : recSum(sec, x), sec);
-      for (const h of x.history || []) add(h.at, h.by, 'עודכן', def.name, 'שונו: ' + Object.keys(h.prev || {}).map(k => def.fields.find(f => f.k === k)?.label || k).join(', '), sec);
+      for (const h of Array.isArray(x.history) ? x.history : []) add(h.at, h.by, 'עודכן', def.name, 'שונו: ' + Object.keys(h.prev || {}).map(k => def.fields.find(f => f.k === k)?.label || k).join(', '), sec);
       for (const t of x.task_log || []) add(t.at, t.by, 'משימה סומנה', def.name, `${auditClip(t.text, 60)} – ${t.done ? 'בוצע' : 'בוטל הסימון'}`, sec);
       if (x.removed) add(x.removed.at, x.removed.by, 'הוסר', def.name, recSum(sec, x), sec);
     } }
@@ -2668,7 +2669,7 @@ function auditRows(r) {
     const orders = S.med_orders.filter(o => o.resident_id === r.id), byO = Object.fromEntries(orders.map(o => [o.id, o]));
     for (const o of orders) {
       add(o.created_at, o.created_by, 'נוצר', 'הוראת תרופה', `${o.drug} · ${o.prn ? 'לפי הצורך' : o.times.join(', ')}`, 'meds');
-      for (const h of o.history || []) add(h.at, h.by, 'עודכן', 'הוראת תרופה', `${o.drug} · ${h.stop ? `הוראה הופסקה: ${auditClip(h.stop.reason, 50)}` : 'שונו: ' + Object.keys(h.prev).map(k => ORDER_KEYS[k]).filter(Boolean).join(', ')}`, 'meds');
+      for (const h of Array.isArray(o.history) ? o.history : []) add(h.at, h.by, 'עודכן', 'הוראת תרופה', `${o.drug} · ${h.stop ? `הוראה הופסקה: ${auditClip(h.stop.reason, 50)}` : 'שונו: ' + Object.keys(h.prev).map(k => ORDER_KEYS[k]).filter(Boolean).join(', ')}`, 'meds');
       if (!o.active && o.stop_date && !(o.history || []).some(h => h.stop)) add(at(o.stop_date, '12:00'), o.updated_by, 'עודכן', 'הוראת תרופה', `${o.drug} · הוראה הופסקה: ${o.stop_reason || '—'}`, 'meds');
     }
     for (const a of S.med_admin.filter(x => byO[x.order_id])) { const o = byO[a.order_id], type = a.prn ? 'מתן לפי הצורך' : 'מתן תרופה', when = a.prn ? fDT(a.at) : `${fD(a.date)} ${a.time}`;
@@ -2679,7 +2680,7 @@ function auditRows(r) {
     }
     for (const x of S.clin.intake.filter(y => y.resident_id === r.id)) add(x.at, x.by, 'בדיקת נטילה', 'בדיקת נטילה', `${x.order_ids.map(id => byO[id]?.drug).filter(Boolean).join(', ')} · ${INTAKE_RESULT[x.result] || ''}`, 'meds');
   }
-  return rows.sort((a, b) => b.at.localeCompare(a.at));
+  return rows.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
 }
 function auditSection(r) {
   const f = F('med_audit', { type: '', from: '', to: '' }), all = auditRows(r), types = [...new Set(all.map(x => x.type))].sort();
@@ -2933,7 +2934,7 @@ function saveMedrec(form) {
   let rec;
   if (corr) { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: x.resident_id, ...data, by: me().id, correction_of: x.id, correction_reason: d.correction_reason }, true); coll.push(rec); x.superseded_by = rec.id; if (def.onSave) def.onSave(rec, r); closePanel(); refresh(); return toast('התיקון נשמר. הרשומה המקורית נשמרה ומסומנת כמוחלפת'); }
   if (x) { const prev = {}; for (const k of Object.keys(data)) if (JSON.stringify(x[k] ?? '') !== JSON.stringify(data[k] ?? '')) prev[k] = x[k] ?? ''; // editable sections keep history[]
-    if (Object.keys(prev).length) (x.history ||= []).push({ at: nowIso(), by: me().id, prev }); Object.assign(x, data); stamp(x); rec = x; toast('הרשומה עודכנה'); }
+    if (Object.keys(prev).length) { if (!Array.isArray(x.history)) x.history = []; x.history.push({ at: nowIso(), by: me().id, prev }); } Object.assign(x, data); stamp(x); rec = x; toast('הרשומה עודכנה'); }
   else { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: r.id, ...data, by: me().id }, true); coll.push(rec); toast('הרשומה נשמרה'); }
   if (def.onSave) def.onSave(rec, r);
   closePanel();
