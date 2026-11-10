@@ -1246,6 +1246,8 @@ function csv(rows) { return '﻿' + rows.map(r => r.map(c => { c = String(c ?? '
 const opt = (v, label, sel) => `<option value="${esc(v)}"${String(sel ?? '') === String(v) ? ' selected' : ''}>${esc(label)}</option>`;
 const opts = (obj, sel, blank) => (blank != null ? opt('', blank, sel) : '') + Object.entries(obj).map(([k, v]) => opt(k, v, sel)).join('');
 const F = (view, defaults) => (UI.f[view] = Object.assign({}, defaults, UI.f[view] || {}));
+// per-resident filter: resets to its defaults when the resident changes (QA round 2)
+const resF = (view, defaults, rid) => { const f = F(view, defaults); if (f._rid !== rid) { Object.assign(f, structuredClone(defaults)); f._rid = rid; } return f; };
 function empty(title, text = '') { return `<div class="empty"><b>${esc(title)}</b>${esc(text)}</div>`; }
 function inlineConfirm(key, text, yesAct, yesLabel, extra = '', cls = 'danger') {
   if (UI.confirm !== key) return null;
@@ -2727,10 +2729,11 @@ function auditSection(r) {
     <td>${x.sec ? `<a href="#/cat/medical/${r.id}/${x.sec}">לסעיף</a>` : ''}</td></tr>`).join('')}</tbody></table></div>${list.length > shown.length ? `<p class="hint">מוצגות ${shown.length} הרשומות האחרונות. צמצמו בעזרת הסינון.</p>` : ''}` : empty('אין רשומות להצגה', 'נסו לשנות את הסינון.')}`;
 }
 /* medications tab (R7b): extends S.med_orders without breaking #/meds (drug / active / times / prn kept) */
-const medF = () => F('med_meds', { kind: '', show: 'active', q: '', sel: [] });
+const MED_F_DEFAULTS = { kind: '', show: 'active', q: '', sel: [] };
+const medF = () => F('med_meds', MED_F_DEFAULTS);
 const lastIntake = oid => S.clin.intake.filter(x => x.order_ids.includes(oid)).sort((a, b) => b.at.localeCompare(a.at))[0];
 function medsSection(r) {
-  const f = medF(), canRun = may('meds.run'), mv = may('meds.view'); // PERM-03: intake results are meds lines (D16)
+  const f = resF('med_meds', MED_F_DEFAULTS, r.id), canRun = may('meds.run'), mv = may('meds.view'); // PERM-03: intake results are meds lines (D16)
   const all = S.med_orders.filter(o => o.resident_id === r.id);
   const list = all.filter(o => (!f.kind || o.kind === f.kind) && (f.show === 'all' || (f.show === 'active' ? o.active : !o.active)) && (!f.q || norm(`${o.brand || o.drug} ${o.generic || ''} ${o.drug_reg_num || ''} ${drugOf(o)?.name_he || ''}`).includes(norm(f.q))))
     .sort((a, b) => (b.active - a.active) || String(b.start || '').localeCompare(String(a.start || '')));
