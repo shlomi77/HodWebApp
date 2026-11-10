@@ -2794,41 +2794,55 @@ function panelMedOrder(p) {
         ${fld('מקסימום מנות ב-24 שעות', `<input name="prn_max_per_24h" type="text" inputmode="numeric" value="${esc(v.prn_max_per_24h ?? '')}" placeholder="4">`, 'prn_max_per_24h', 1)}</div></fieldset>
     <div class="frow">${fld('רופא/ה מרשם', `<input name="prescriber" type="text" list="dl-docs" value="${esc(v.prescriber || '')}"><datalist id="dl-docs">${S.settings.doctors.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`, 'prescriber', 1)}${fld('תאריך התחלה', dIn('start', v.start || today()), 'start', 1)}</div>
     ${o && o.active ? `<fieldset><legend>הפסקת הוראה</legend><label class="cb"><input type="checkbox" name="stop"> להפסיק את ההוראה</label>
-      <div data-when="stop:on" class="frow">${fld('תאריך הפסקה', dIn('stop_date', today()), 'stop_date', 1)}${fld('סיבת הפסקה', `<input name="stop_reason" type="text">`, 'stop_reason', 1)}</div></fieldset>` : ''}
+      <div data-when="stop:on" class="frow">${fld('תאריך הפסקה', dIn('stop_date', today()), 'stop_date', 1)}${fld('סיבת הפסקה', `<input name="stop_reason" type="text">`, 'stop_reason', 1)}</div>
+      <p class="hint" data-when="stop:on">בעת הפסקת הוראה נשמרים רק פרטי ההפסקה</p></fieldset>` : ''}
     ${o && !o.active ? `<p class="note-inline">ההוראה הופסקה ב-${fD(o.stop_date)}${o.stop_reason ? ` (${esc(o.stop_reason)})` : ''}.</p>` : ''}
     <div class="actions"><button class="btn pri">שמירה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
 }
 // R14 order diff (QA round 2): undefined, null and '' count as the same empty value
 const blankEq = v => v === undefined || v === null || v === '' ? null : v;
+const orderDiff = (o, data) => { const prev = {}; for (const k of Object.keys(data)) if (k !== 'allergy_ack' && JSON.stringify(blankEq(o[k])) !== JSON.stringify(blankEq(data[k]))) prev[k] = o[k] ?? null; return prev; };
+const STOP_ONLY = 'בעת הפסקת הוראה נשמרים רק פרטי ההפסקה';
 function saveMedOrder(form) {
   if (!may('meds.run')) return toast(NO_PERM_ACT);
   const o = form.dataset.id && byId(S.med_orders, form.dataset.id), r = res(form.dataset.rid), d = readForm(form), e = {}, c = catFromPick(d.drug_pick);
+  const stopping = !!(o && o.active && d.stop);
+  const parts = d.prn ? [] : (d.times || '').split(/[,\s]+/).filter(Boolean), parsed = parts.map(parseT), times = [...new Set(parsed.filter(Boolean))].sort();
+  const vals = { kind: d.kind, dose: d.dose, route: d.route, prn: !!d.prn, times: d.prn ? [] : times, prescriber: d.prescriber, start: d.start,
+    prn_indication: d.prn ? d.prn_indication : '', prn_min_interval_h: d.prn ? +d.prn_min_interval_h : null, prn_max_per_24h: d.prn ? +d.prn_max_per_24h : null };
+  if (stopping) { // QA round 2: a stop saves only the stop fields; every other value in the panel is discarded, so only the stop is validated. MQ-1: no allergy gate
+    if (!d.stop_date) e.stop_date = 'שדה חובה'; else if (o.start && d.stop_date < o.start) e.stop_date = 'לא לפני תאריך ההתחלה'; else if (futureDate(d.stop_date)) e.stop_date = 'לא בעתיד';
+    if (!d.stop_reason) e.stop_reason = 'כתבו סיבה';
+    form._bad = form._bad?.stop_date ? { stop_date: form._bad.stop_date } : {};
+    if (!showErrors(form, e)) return;
+    const discarded = (c ? c.reg_num : d.drug_pick || '') !== (o.drug_reg_num || '') || Object.keys(orderDiff(o, vals)).length > 0;
+    (o.history ||= []).push({ at: nowIso(), by: me().id, prev: {}, stop: { date: d.stop_date, reason: d.stop_reason } });
+    Object.assign(o, { active: false, stop_date: d.stop_date, stop_reason: d.stop_reason }); stamp(o);
+    toast(discarded ? 'ההוראה הופסקה · ' + STOP_ONLY : 'ההוראה הופסקה');
+    medF().sel = []; closePanel(); refresh(); return;
+  }
   if (!c) e.drug_pick = 'בחרו תרופה מרשימת התרופות';
-  // D6 at order save: severe → block, other → acknowledgment required. Stopping an active order never runs the gate (D6-05)
-  const stopping = !!(o && o.active && d.stop), ac = stopping ? { level: null, allergens: [] } : allergyConflict(r, c), reuse = orderAckReuse(o, c, ac);
+  // D6 at order save: severe → block, other → acknowledgment required. Stopping an active order never runs the gate (D6-05, handled above)
+  const ac = allergyConflict(r, c), reuse = orderAckReuse(o, c, ac);
   if (ac.level === 'block') e.drug_pick = orderSevereMsg(o, c, ac); else if (ac.level === 'warn' && !reuse && !d.allergy_ack) e.allergy_ack = ACK_ERR;
   for (const k of ['dose', 'prescriber']) if (!d[k]) e[k] = 'שדה חובה';
   if (!d.start) e.start = 'שדה חובה';
-  let times = [];
-  if (!d.prn) { const parts = (d.times || '').split(/[,\s]+/).filter(Boolean); times = parts.map(parseT); if (!parts.length) e.times = 'הזינו לפחות שעה אחת'; else if (times.some(t => !t)) e.times = 'שעה בפורמט 24 שעות, למשל 08:00'; times = [...new Set(times.filter(Boolean))].sort(); }
+  if (!d.prn) { if (!parts.length) e.times = 'הזינו לפחות שעה אחת'; else if (parsed.some(t => !t)) e.times = 'שעה בפורמט 24 שעות, למשל 08:00'; }
   else { // R9: all three PRN rules are required
     if (!d.prn_indication) e.prn_indication = 'כתבו התוויה';
     if (d.prn_min_interval_h === '' || !(+d.prn_min_interval_h > 0)) e.prn_min_interval_h = 'מספר שעות גדול מ-0';
     if (d.prn_max_per_24h === '' || !Number.isInteger(+d.prn_max_per_24h) || +d.prn_max_per_24h < 1) e.prn_max_per_24h = 'מספר שלם, 1 ומעלה';
   }
-  if (d.stop) { if (!d.stop_date) e.stop_date = 'שדה חובה'; else if (d.start && d.stop_date < d.start) e.stop_date = 'לא לפני תאריך ההתחלה'; else if (futureDate(d.stop_date)) e.stop_date = 'לא בעתיד'; if (!d.stop_reason) e.stop_reason = 'כתבו סיבה'; }
   if (!showErrors(form, e)) return;
-  const data = { drug_reg_num: c.reg_num, dosage_form: c.dosage_form, ...drugFields(c), kind: d.kind, dose: d.dose, route: d.route, prn: !!d.prn, times: d.prn ? [] : times, prescriber: d.prescriber, start: d.start,
-    prn_indication: d.prn ? d.prn_indication : '', prn_min_interval_h: d.prn ? +d.prn_min_interval_h : null, prn_max_per_24h: d.prn ? +d.prn_max_per_24h : null,
-    allergy_ack: null };
+  const data = { drug_reg_num: c.reg_num, dosage_form: c.dosage_form, ...drugFields(c), ...vals, allergy_ack: null };
   // MQ-3: a new acknowledgement entry only when the tick was actually required and given; entries are never removed
   const newAck = ac.level === 'warn' && !reuse ? { by: me().id, at: nowIso(), allergens: ac.allergens, drug_reg_num: c.reg_num } : null;
-  data.allergy_ack = stopping ? o.allergy_ack ?? null : reuse || newAck;
-  if (o) { const prev = {}; for (const k of Object.keys(data)) if (k !== 'allergy_ack' && JSON.stringify(blankEq(o[k])) !== JSON.stringify(blankEq(data[k]))) prev[k] = o[k] ?? null; // R14: order edits keep history[]
+  data.allergy_ack = reuse || newAck;
+  if (o) { const prev = orderDiff(o, data); // R14: order edits keep history[]
     for (const k of Object.keys(data)) if (blankEq(data[k]) === null && !(k in o)) delete data[k]; // don't write empty fields the order never had
-    if (Object.keys(prev).length || d.stop) (o.history ||= []).push({ at: nowIso(), by: me().id, prev, ...(d.stop ? { stop: { date: d.stop_date, reason: d.stop_reason } } : {}) });
+    if (Object.keys(prev).length) (o.history ||= []).push({ at: nowIso(), by: me().id, prev });
     if (newAck) { if (!Array.isArray(o.allergy_acks)) o.allergy_acks = o.allergy_ack ? [o.allergy_ack] : []; o.allergy_acks.push(newAck); }
-    Object.assign(o, data); if (d.stop) Object.assign(o, { active: false, stop_date: d.stop_date, stop_reason: d.stop_reason }); stamp(o); toast(d.stop ? 'ההוראה הופסקה' : 'ההוראה עודכנה'); }
+    Object.assign(o, data); stamp(o); toast('ההוראה עודכנה'); }
   else { S.med_orders.push(stamp({ id: 'MO' + (1 + Math.max(0, ...S.med_orders.map(x => +x.id.slice(2)))), resident_id: r.id, ...data, allergy_acks: newAck ? [newAck] : [], active: true, stop_date: null, stop_reason: '' }, true)); toast('ההוראה נוספה'); }
   medF().sel = []; closePanel(); refresh();
 }
