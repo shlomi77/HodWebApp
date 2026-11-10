@@ -2973,6 +2973,9 @@ function panelMedrec(p) {
     ${def.fields.map(fd => medField(fd, v[fd.k], r)).join('')}
     <div class="actions"><button class="btn pri">שמירה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
 }
+// R13 editable-section history diff (QA round 2): empty bool (false) and empty multi ([]) count as blank too
+const clinBlank = (fd, v) => v === undefined || v === null || v === '' || (fd?.type === 'bool' && v === false) || (fd?.type === 'multi' && Array.isArray(v) && !v.length) ? null : v;
+function clinDiff(def, x, data) { const prev = {}; for (const k of Object.keys(data)) { const fd = def.fields.find(f => f.k === k); if (JSON.stringify(clinBlank(fd, x[k])) !== JSON.stringify(clinBlank(fd, data[k]))) prev[k] = x[k] ?? ''; } return prev; }
 function saveMedrec(form) {
   const def = MED_SECTIONS[form.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT);
   const coll = S.clin[def.coll], x = form.dataset.id && coll.find(y => y.id === form.dataset.id), r = res(form.dataset.rid), corr = form.dataset.correct === '1';
@@ -2993,7 +2996,7 @@ function saveMedrec(form) {
   if (def.compute) { const c = def.compute(data); if (!c) return showErrors(form, { [def.fields[1].k]: 'מלאו את כל הפריטים' }); Object.assign(data, c); } // R15: score / band / next_due
   let rec;
   if (corr) { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: x.resident_id, ...data, by: me().id, correction_of: x.id, correction_reason: d.correction_reason }, true); coll.push(rec); x.superseded_by = rec.id; if (def.onSave) def.onSave(rec, r); closePanel(); refresh(); return toast('התיקון נשמר. הרשומה המקורית נשמרה ומסומנת כמוחלפת'); }
-  if (x) { const prev = {}; for (const k of Object.keys(data)) if (JSON.stringify(x[k] ?? '') !== JSON.stringify(data[k] ?? '')) prev[k] = x[k] ?? ''; // editable sections keep history[]
+  if (x) { const prev = clinDiff(def, x, data); // editable sections keep history[]
     if (Object.keys(prev).length) { if (!Array.isArray(x.history)) x.history = []; x.history.push({ at: nowIso(), by: me().id, prev }); } Object.assign(x, data); stamp(x); rec = x; toast('הרשומה עודכנה'); }
   else { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: r.id, ...data, by: me().id }, true); coll.push(rec); toast('הרשומה נשמרה'); }
   if (def.onSave) def.onSave(rec, r);
