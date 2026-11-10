@@ -1798,13 +1798,13 @@ function tabResEvents(r) {
   return `<div class="actions" style="margin-bottom:10px"><button class="btn pri" data-act="new-event" data-rid="${r.id}">דווח אירוע חריג</button>${!may('events.viewAll') ? '<span class="hint">מוצגים רק אירועים שדיווחת בעצמך.</span>' : ''}</div>${eventTable(list)}`;
 }
 function tabNursing(r) {
-  const orders = S.med_orders.filter(o => o.resident_id === r.id && o.active), d = today();
+  const orders = S.med_orders.filter(o => o.resident_id === r.id && o.active), d = today(), mv = may('meds.view'); // PERM-03 / MQ-5: dose details only with meds.view
   const times = [...new Set(orders.flatMap(o => o.times))].sort();
-  const cell = (o, t) => { if (!o.times.includes(t)) return '<td></td>'; const a = doseRec(o.id, d, t); const s = a?.status || 'pending'; return `<td class="n">${s === 'given' ? `<span class="chip ok" title="${esc(uname(a.by) + (a.second_check_by ? ' · אימות כפול: ' + uname(a.second_check_by) : ''))}">ניתן ${fT(a.at)}</span>` : s === 'not_given' ? `<span class="chip red" title="${esc(a.reason + (a.note ? ' – ' + a.note : ''))}">לא ניתן: ${esc(a.reason)}</span>` : '<span class="chip">ממתין</span>'}</td>`; };
+  const cell = (o, t) => { if (!o.times.includes(t)) return '<td></td>'; if (!mv) return '<td class="n"><span class="muted" aria-label="שעת מתן מתוכננת">•</span></td>'; const a = doseRec(o.id, d, t); const s = a?.status || 'pending'; return `<td class="n">${s === 'given' ? `<span class="chip ok" title="${esc(uname(a.by) + (a.second_check_by ? ' · אימות כפול: ' + uname(a.second_check_by) : ''))}">ניתן ${fT(a.at)}</span>` : s === 'not_given' ? `<span class="chip red" title="${esc(a.reason + (a.note ? ' – ' + a.note : ''))}">לא ניתן: ${esc(a.reason)}</span>` : '<span class="chip">ממתין</span>'}</td>`; };
   const vit = liveVitals(r.id);
   const byType = {}; for (const v of vit) (byType[v.type] ||= []).length < 5 && byType[v.type].push(v);
-  return `<h3 style="margin-top:0">טבלת מתן תרופות להיום (${fD(d)})</h3>
-  ${orders.length ? `<div class="tbl"><table><thead><tr><th>תרופה</th><th>מינון</th><th>דרך מתן</th>${times.map(t => `<th class="n">${t}</th>`).join('')}<th>לפי הצורך</th></tr></thead><tbody>${orders.map(o => `<tr><td><b>${esc(o.drug)}</b></td><td>${esc(o.dose)}</td><td>${esc(o.route)}</td>${times.map(t => cell(o, t)).join('')}<td>${o.prn ? (prnGiven(o.id).at(-1) ? `<small>כן · ${fDT(prnGiven(o.id).at(-1).at)}</small>` : 'כן') : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">אין הוראות תרופות פעילות.</p>'}
+  return `${mv ? `<h3 style="margin-top:0">טבלת מתן תרופות להיום (${fD(d)})</h3>` : '<h3 style="margin-top:0">הוראות תרופות פעילות</h3><p class="hint" style="margin:0 0 8px">פרטי מתן תרופות אינם מוצגים בתפקיד זה.</p>'}
+  ${orders.length ? `<div class="tbl"><table><thead><tr><th>תרופה</th><th>מינון</th><th>דרך מתן</th>${times.map(t => `<th class="n">${t}</th>`).join('')}<th>לפי הצורך</th></tr></thead><tbody>${orders.map(o => `<tr><td><b>${esc(o.drug)}</b></td><td>${esc(o.dose)}</td><td>${esc(o.route)}</td>${times.map(t => cell(o, t)).join('')}<td>${o.prn ? (mv && prnGiven(o.id).at(-1) ? `<small>כן · ${fDT(prnGiven(o.id).at(-1).at)}</small>` : 'כן') : ''}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">אין הוראות תרופות פעילות.</p>'}
   <div class="actions" style="margin:16px 0 8px"><h3 style="margin:0">מדדים – 5 אחרונים</h3>${may('clinical.vitals') ? `<button class="btn sm pri" data-act="vitals" data-rid="${r.id}">הזנת מדדים</button>` : ''}</div>
   ${vit.length ? `<div class="grid2">${Object.entries(byType).map(([t, list]) => `<div class="card pad"><b>${VITALS[t].name}</b> <span class="muted">${VITALS[t].unit}</span><ul class="hist" style="margin-top:6px">${list.map(v => `<li class="num">${VITALS[t].ok(v.value) ? esc(v.value) : `<b style="color:var(--danger)">${esc(v.value)} ⚠</b>`} <small>· ${fDT(v.at)}</small></li>`).join('')}</ul></div>`).join('')}</div>` : '<p class="muted">לא נמדדו מדדים.</p>'}`;
 }
@@ -2436,7 +2436,8 @@ function viewSettings() {
   out += sec('evtypes', 'סוגי אירועים ורשימת עדכונים', `<div class="tbl"><table><thead><tr><th>סוג</th><th>פעיל</th><th>את מי לעדכן ותוך כמה זמן</th></tr></thead><tbody>${S.event_types.map(t => `<tr><td><b>${esc(t.name)}</b></td><td><input type="checkbox" ${t.active ? 'checked' : ''} data-ch="evtype-active" data-id="${t.id}" aria-label="פעיל"></td><td>${t.notify.map(n => `${NOTIFY_TO[n.to]} (${n.within_min >= 60 ? n.within_min / 60 + ' ש׳' : n.within_min + ' ד׳'})`).join(' · ')}</td></tr>`).join('')}</tbody></table></div>`);
   const sh = S.settings.shifts;
   out += sec('shifts', 'זמני משמרות וסבבים', `<form class="frow" data-submit="shifts" style="align-items:end">${fld('משמרת בוקר מתחילה', `<input type="text" inputmode="numeric" data-time placeholder="00:00" maxlength="5" name="morning" value="${sh.morning}">`, 'morning')}${fld('משמרת ערב מתחילה', `<input type="text" inputmode="numeric" data-time placeholder="00:00" maxlength="5" name="evening" value="${sh.evening}">`, 'evening')}${fld('משמרת לילה מתחילה', `<input type="text" inputmode="numeric" data-time placeholder="00:00" maxlength="5" name="night" value="${sh.night}">`, 'night')}${fld('סבב ערב נפתח מ-', `<input type="text" inputmode="numeric" data-time placeholder="00:00" maxlength="5" name="round_evening_from" value="${S.settings.round_evening_from}">`, 'round_evening_from', 0, 'לפני השעה הזו נפתח סבב בוקר')}<div><button class="btn pri">שמירה</button></div></form>`);
-  out += sec('data', 'נתוני הדגמה', `<p class="hint" style="margin-top:0">כל הנתונים פיקטיביים ונשמרים רק בדפדפן הזה. נוצרו ב-${fDT(S.seeded_at)}.</p><div class="actions">
+  out += sec('data', 'נתוני הדגמה', `<p class="hint" style="margin-top:0">כל הנתונים פיקטיביים ונשמרים רק בדפדפן הזה. נוצרו ב-${fDT(S.seeded_at)}.</p>
+    <p class="hint" style="margin:0 0 6px;color:var(--warn);font-weight:600" role="note"><span aria-hidden="true">⚠ </span>הקובץ כולל מידע רפואי ומידע על תרופות</p><div class="actions">
     ${inlineConfirm('reset', 'כל השינויים יימחקו והנתונים ייווצרו מחדש. להמשיך?', 'reset-data', 'כן, לאפס') || `<button class="btn danger" data-act="confirm" data-key="reset">איפוס נתוני הדגמה</button>`}
     <button class="btn" data-act="export-json">${ic('download')} ייצוא JSON</button>
     <label class="btn">${ic('upload')} ייבוא JSON<input type="file" accept="application/json,.json" data-ch="import-json" class="sr"></label></div><span class="err" id="import-err"></span>`);
@@ -2729,7 +2730,7 @@ function auditSection(r) {
 const medF = () => F('med_meds', { kind: '', show: 'active', q: '', sel: [] });
 const lastIntake = oid => S.clin.intake.filter(x => x.order_ids.includes(oid)).sort((a, b) => b.at.localeCompare(a.at))[0];
 function medsSection(r) {
-  const f = medF(), canRun = may('meds.run');
+  const f = medF(), canRun = may('meds.run'), mv = may('meds.view'); // PERM-03: intake results are meds lines (D16)
   const all = S.med_orders.filter(o => o.resident_id === r.id);
   const list = all.filter(o => (!f.kind || o.kind === f.kind) && (f.show === 'all' || (f.show === 'active' ? o.active : !o.active)) && (!f.q || norm(`${o.brand || o.drug} ${o.generic || ''} ${o.drug_reg_num || ''} ${drugOf(o)?.name_he || ''}`).includes(norm(f.q))))
     .sort((a, b) => (b.active - a.active) || String(b.start || '').localeCompare(String(a.start || '')));
@@ -2740,20 +2741,21 @@ function medsSection(r) {
     <div class="seg" role="group" aria-label="הצגה">${[['active', 'פעילות'], ['all', 'הכל'], ['stopped', 'הופסקו']].map(([k, l]) => `<button data-act="meds-show" data-v="${k}" aria-pressed="${f.show === k}">${l}</button>`).join('')}</div>
     <div class="q">${ic('search')}<input id="medf-meds" type="search" placeholder="חיפוש לפי שם מסחרי או גנרי" value="${esc(f.q)}" data-in="f" data-view="med_meds" data-k="q" aria-label="חיפוש תרופה"></div>
     ${canRun && f.sel.length ? `<span class="chip acc">${f.sel.length} נבחרו</span>` : ''}</div>
-  ${list.length ? `<div class="tbl"><table><thead><tr>${canRun ? '<th><span class="sr">בחירה</span></th>' : ''}<th>תרופה</th><th>מינון ושעות</th><th>רופא/ה מרשם / עודכן ע״י</th><th>סוג</th><th>סטטוס</th><th>בדיקת נטילה אחרונה</th></tr></thead><tbody>
-  ${list.map(o => { const li2 = lastIntake(o.id); return `<tr class="${o.active ? '' : 'stopped'}${f.sel.includes(o.id) ? ' sel' : ''}">
+  ${list.length ? `<div class="tbl"><table><thead><tr>${canRun ? '<th><span class="sr">בחירה</span></th>' : ''}<th>תרופה</th><th>מינון ושעות</th><th>רופא/ה מרשם / עודכן ע״י</th><th>סוג</th><th>סטטוס</th>${mv ? '<th>בדיקת נטילה אחרונה</th>' : ''}</tr></thead><tbody>
+  ${list.map(o => { const li2 = mv && lastIntake(o.id); return `<tr class="${o.active ? '' : 'stopped'}${f.sel.includes(o.id) ? ' sel' : ''}">
     ${canRun ? `<td><input type="checkbox" data-act="med-sel" data-id="${o.id}" ${f.sel.includes(o.id) ? 'checked' : ''} aria-label="בחירת ${esc(o.drug)}"></td>` : ''}
     <td><b>${esc(o.brand ? `${o.brand} ${o.strength}` : o.drug)}</b>${o.generic ? `<br><small class="muted">${esc(o.generic)} ${esc(o.generic_dose || '')}</small>` : ''}${o.drug_reg_num ? `<br><small class="muted num">${esc(o.drug_reg_num)} · ${esc(o.dosage_form || '')}</small>` : ''}${catFlagChips(drugOf(o), false) ? `<br>${catFlagChips(drugOf(o), false)}` : ''}${o.allergy_ack ? `<br><span class="chip warn" title="${esc(uname(o.allergy_ack.by))} · ${fDT(o.allergy_ack.at)}">⚠ אושרה אזהרת רגישות: ${esc(o.allergy_ack.allergens.join(', '))}</span>` : ''}</td>
     <td>${esc(o.dose)} · ${esc(o.route)}<br><small class="muted num">${o.prn ? 'לפי הצורך' : esc(o.times.join(', '))}</small>${o.prn ? prnCell(o, canRun) : ''}</td>
     <td>${esc(o.prescriber || '—')}<br><small class="muted">עודכן ע״י ${esc(uname(o.updated_by))}${o.updated_at ? ' · ' + fD(o.updated_at) : ''}</small></td>
     <td><span class="chip ${o.kind === 'acute' ? 'warn' : 'blue'}">${MED_KIND[o.kind] || '—'}</span></td>
     <td>${o.active ? '<span class="chip ok">פעילה</span>' : `<span class="chip">הופסקה ${fD(o.stop_date)}</span>${o.stop_reason ? `<br><small class="muted">${esc(o.stop_reason)}</small>` : ''}`}</td>
-    <td>${li2 ? `<span class="chip ${INTAKE_CHIP[li2.result]}" title="${esc(li2.note || '')}">${INTAKE_RESULT[li2.result]} · ${fD(li2.at)}</span>` : '<span class="muted">—</span>'}</td></tr>`; }).join('')}</tbody></table></div>` : empty('אין הוראות תרופות להצגה', 'נסו לשנות את המסננים.')}
+    ${mv ? `<td>${li2 ? `<span class="chip ${INTAKE_CHIP[li2.result]}" title="${esc(li2.note || '')}">${INTAKE_RESULT[li2.result]} · ${fD(li2.at)}</span>` : '<span class="muted">—</span>'}</td>` : ''}</tr>`; }).join('')}</tbody></table></div>` : empty('אין הוראות תרופות להצגה', 'נסו לשנות את המסננים.')}
   <p class="hint" style="margin-top:10px">טיפול בתרופות: אופן נטילה <b>${esc(mh.intake || '—')}</b> · אופן רכישה <b>${esc(mh.purchase || '—')}</b>${canRun ? ' (לעדכון: "עדכון" בלי לבחור תרופה)' : ''}</p>
   <p class="hint">הדגמה בלבד: שמות התרופות פיקטיביים.</p>`;
 }
 /* PRN rules, history and give button in the meds tab (manager sees it read-only) */
 function prnCell(o, canRun) {
+  if (!may('meds.view')) return `<br><small>${prnRules(o)}</small>`; // PERM-03: no last given time, 24 h count or history without meds.view
   const s = prnState(o), hist = S.med_admin.filter(a => a.order_id === o.id && a.prn && a.status !== 'voided').sort((a, b) => b.at.localeCompare(a.at));
   const fixOf = a => a.superseded_by && byId(S.med_admin, a.superseded_by);
   return `<br><small>${prnRules(o)}</small><br><small class="muted">${prnLastTxt(s)}</small>
