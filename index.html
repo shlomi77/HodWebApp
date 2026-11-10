@@ -1938,10 +1938,12 @@ const CC_UNIT = 'ארון מרכזי (הדגמה)';
 const controlledDrugs = () => (S.drug_catalog || []).filter(c => c.controlled_schedule);
 const ccCounts = () => [...(S.controlled_shift_counts || [])].sort((a, b) => b.incoming_at.localeCompare(a.incoming_at)); // newest first
 // expected = counted qty of the last signed count (or the seed balance) − given, non-voided doses of that drug since then
+// R12-06: a count's quantities are a snapshot at the outgoing time, so doses given while the incoming user signs are deducted from the next count
+const ccSnapAt = x => Date.parse(x.outgoing_at || x.at);
 function ccExpected(reg, until = Date.now()) {
-  const last = ccCounts().find(x => Date.parse(x.incoming_at) <= until && x.rows.some(rw => rw.drug_reg_num === reg));
+  const last = (S.controlled_shift_counts || []).filter(x => ccSnapAt(x) <= until && x.rows.some(rw => rw.drug_reg_num === reg)).sort((a, b) => ccSnapAt(b) - ccSnapAt(a))[0];
   const base = last ? last.rows.find(rw => rw.drug_reg_num === reg).counted_qty : (S.controlled_stock?.[reg] ?? 0);
-  const since = last ? Date.parse(last.incoming_at) : S.controlled_stock_at ? Date.parse(S.controlled_stock_at) : 0;
+  const since = last ? ccSnapAt(last) : S.controlled_stock_at ? Date.parse(S.controlled_stock_at) : 0;
   const oids = new Set(S.med_orders.filter(o => o.drug_reg_num === reg).map(o => o.id));
   return base - S.med_admin.filter(a => oids.has(a.order_id) && a.status === 'given' && !a.superseded_by && Date.parse(a.at) > since && Date.parse(a.at) <= until).length;
 }
