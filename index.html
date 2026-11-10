@@ -2798,6 +2798,8 @@ function panelMedOrder(p) {
     ${o && !o.active ? `<p class="note-inline">ההוראה הופסקה ב-${fD(o.stop_date)}${o.stop_reason ? ` (${esc(o.stop_reason)})` : ''}.</p>` : ''}
     <div class="actions"><button class="btn pri">שמירה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
 }
+// R14 order diff (QA round 2): undefined, null and '' count as the same empty value
+const blankEq = v => v === undefined || v === null || v === '' ? null : v;
 function saveMedOrder(form) {
   if (!may('meds.run')) return toast(NO_PERM_ACT);
   const o = form.dataset.id && byId(S.med_orders, form.dataset.id), r = res(form.dataset.rid), d = readForm(form), e = {}, c = catFromPick(d.drug_pick);
@@ -2822,7 +2824,8 @@ function saveMedOrder(form) {
   // MQ-3: a new acknowledgement entry only when the tick was actually required and given; entries are never removed
   const newAck = ac.level === 'warn' && !reuse ? { by: me().id, at: nowIso(), allergens: ac.allergens, drug_reg_num: c.reg_num } : null;
   data.allergy_ack = stopping ? o.allergy_ack ?? null : reuse || newAck;
-  if (o) { const prev = {}; for (const k of Object.keys(data)) if (k !== 'allergy_ack' && JSON.stringify(o[k] ?? null) !== JSON.stringify(data[k] ?? null)) prev[k] = o[k] ?? null; // R14: order edits keep history[]
+  if (o) { const prev = {}; for (const k of Object.keys(data)) if (k !== 'allergy_ack' && JSON.stringify(blankEq(o[k])) !== JSON.stringify(blankEq(data[k]))) prev[k] = o[k] ?? null; // R14: order edits keep history[]
+    for (const k of Object.keys(data)) if (blankEq(data[k]) === null && !(k in o)) delete data[k]; // don't write empty fields the order never had
     if (Object.keys(prev).length || d.stop) (o.history ||= []).push({ at: nowIso(), by: me().id, prev, ...(d.stop ? { stop: { date: d.stop_date, reason: d.stop_reason } } : {}) });
     if (newAck) { if (!Array.isArray(o.allergy_acks)) o.allergy_acks = o.allergy_ack ? [o.allergy_ack] : []; o.allergy_acks.push(newAck); }
     Object.assign(o, data); if (d.stop) Object.assign(o, { active: false, stop_date: d.stop_date, stop_reason: d.stop_reason }); stamp(o); toast(d.stop ? 'ההוראה הופסקה' : 'ההוראה עודכנה'); }
