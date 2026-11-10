@@ -1055,11 +1055,14 @@ function catFlagChips(c, withControlled = true) {
   return [c.high_alert ? '<span class="chip red">תרופה בסיכון גבוה</span>' : '', c.requires_double_check ? '<span class="chip warn">נדרש אימות כפול</span>' : '',
     withControlled && c.controlled_schedule ? `<span class="chip vio">${esc(c.controlled_schedule)}</span>` : ''].filter(Boolean).join(' ');
 }
-// D12: a normalized allergen matches an ingredient name / Hebrew name / allergy class, or the catalogue brand names
+// D6-07a tokens for allergen matching only (search keeps norm): lowercase, no niqqud / geresh / quotes, Hebrew final letters → regular, split on non letters/digits
+const HE_FINAL = { 'ך': 'כ', 'ם': 'מ', 'ן': 'נ', 'ף': 'פ', 'ץ': 'צ' };
+const allergyTokens = s => String(s ?? '').toLowerCase().replace(/[\u0591-\u05C7'"`׳״’‘“”]/g, '').replace(/[ךםןףץ]/g, ch => HE_FINAL[ch]).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+// D12 + D6-07a (MQ-2): the allergen's tokens must appear as a contiguous whole-token run in an ingredient name / Hebrew name / allergy class, or a catalogue brand name. No transliteration, stemming or prefix stripping
 function allergenMatches(allergen, c) {
-  const a = norm(allergen); if (!a || !c) return false;
-  const keys = [c.name_he, c.name_en, ...c.active_ingredients.flatMap(i => [i.name, i.name_he, i.allergy_class])].filter(Boolean).map(norm);
-  return keys.some(k => k === a || (a.length >= 3 && k.includes(a)));
+  const a = allergyTokens(allergen); if (!a.length || !c) return false;
+  const keys = [c.name_he, c.name_en, ...c.active_ingredients.flatMap(i => [i.name, i.name_he, i.allergy_class])].filter(Boolean).map(allergyTokens);
+  return keys.some(k => { for (let i = 0; i + a.length <= k.length; i++) if (a.every((t, j) => k[i + j] === t)) return true; return false; });
 }
 // D6 gate, one shared helper: severe (חמורה) match blocks, any other match warns and needs an acknowledgment
 function allergyConflict(r, c) {
