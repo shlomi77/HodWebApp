@@ -1076,6 +1076,20 @@ function allergyBox(ac, name = 'allergy_ack') {
   return `<div class="note-inline" role="alert">⚠ אזהרת רגישות: ${esc(ac.allergens.join(', '))} – התרופה מכילה רכיב מאותה קבוצה.
     <div><label class="cb"><input type="checkbox" name="${name}"> ${ACK_LABEL}</label></div><span class="err" data-for="${name}"></span></div>`;
 }
+// D6 on order edit: an unchanged drug with the same matched allergens reuses the order's latest acknowledgement (no new tick)
+const allergenSet = list => [...new Set((list || []).map(norm))].sort().join('|');
+const orderLastAck = o => o ? o.allergy_ack || null : null;
+function orderAckReuse(o, c, ac) {
+  const last = orderLastAck(o);
+  return o && c && ac.level === 'warn' && last && o.drug_reg_num === c.reg_num && allergenSet(last.allergens) === allergenSet(ac.allergens) ? last : null;
+}
+const orderSevereMsg = (o, c, ac) => allergyBlockMsg(ac) + (o && o.active && c && o.drug_reg_num === c.reg_num ? ' · אפשר רק להפסיק את ההוראה' : '');
+function orderAllergyBox(r, o, c) {
+  const ac = allergyConflict(r, c), reuse = orderAckReuse(o, c, ac);
+  if (reuse) return `<p class="note-inline" style="margin:0">אזהרת רגישות אושרה ב-${fD(reuse.at).slice(0, 5)} ע״י ${esc(uname(reuse.by))} (${esc(reuse.allergens.join(', '))})</p>`;
+  if (ac.level === 'block') return `<p class="note-inline red" style="margin:0" role="alert">${esc(orderSevereMsg(o, c, ac))}</p>`;
+  return allergyBox(ac);
+}
 /* R11 second signer: shared by the double-check give and the R12 controlled count */
 function verifySigner(userId, pin) {
   const u = userId && byId(S.users, userId);
@@ -2749,7 +2763,7 @@ function panelMedOrder(p) {
     ${fld('תרופה מרשימת התרופות', `<input name="drug_pick" type="text" list="dl-cat" value="${c ? esc(catLabel(c)) : ''}" placeholder="חיפוש לפי שם, רכיב פעיל או מס׳ רישום" data-in="cat-pick" autofocus>
       <datalist id="dl-cat">${S.drug_catalog.map(x => `<option value="${esc(catLabel(x))}">`).join('')}</datalist>`, 'drug_pick', 1, o && !c ? `הוראה ישנה: ${esc(o.drug)} – בחרו את התרופה מהרשימה` : 'הבחירה ממלאת את צורת המתן ואת דרך המתן')}
     <div id="cat-info">${catInfo(c)}</div>
-    <div id="alg-box">${allergyBox(allergyConflict(r, c))}</div>
+    <div id="alg-box">${orderAllergyBox(r, o, c)}</div>
     <div class="frow">${fld('סוג', `<select name="kind">${opts(MED_KIND, v.kind)}</select>`, 'kind', 1)}${fld('מינון', `<input name="dose" type="text" value="${esc(v.dose)}" placeholder="1 טבליה">`, 'dose', 1)}${fld('דרך מתן', `<select name="route">${MED_ROUTES.map(x => opt(x, x, v.route)).join('')}</select>`, 'route', 1, 'ממולא מהרשימה, אפשר לשנות')}</div>
     <label class="cb"><input type="checkbox" name="prn" ${v.prn ? 'checked' : ''}> לפי הצורך (ללא שעות קבועות)</label>
     <div data-when="prn:off">${fld('שעות מתן', `<input name="times" type="text" value="${esc(v.times.join(', '))}" placeholder="08:00, 20:00">`, 'times', 1, 'שעות בפורמט 24 שעות, מופרדות בפסיק')}</div>
@@ -2767,8 +2781,9 @@ function saveMedOrder(form) {
   if (!may('meds.run')) return toast(NO_PERM_ACT);
   const o = form.dataset.id && byId(S.med_orders, form.dataset.id), r = res(form.dataset.rid), d = readForm(form), e = {}, c = catFromPick(d.drug_pick);
   if (!c) e.drug_pick = 'בחרו תרופה מרשימת התרופות';
-  const ac = allergyConflict(r, c); // D6 at order save: severe → block, other → acknowledgment required
-  if (ac.level === 'block') e.drug_pick = allergyBlockMsg(ac); else if (ac.level === 'warn' && !d.allergy_ack) e.allergy_ack = ACK_ERR;
+  // D6 at order save: severe → block, other → acknowledgment required. Stopping an active order never runs the gate (D6-05)
+  const stopping = !!(o && o.active && d.stop), ac = stopping ? { level: null, allergens: [] } : allergyConflict(r, c), reuse = orderAckReuse(o, c, ac);
+  if (ac.level === 'block') e.drug_pick = orderSevereMsg(o, c, ac); else if (ac.level === 'warn' && !reuse && !d.allergy_ack) e.allergy_ack = ACK_ERR;
   for (const k of ['dose', 'prescriber']) if (!d[k]) e[k] = 'שדה חובה';
   if (!d.start) e.start = 'שדה חובה';
   let times = [];
@@ -2782,7 +2797,7 @@ function saveMedOrder(form) {
   if (!showErrors(form, e)) return;
   const data = { drug_reg_num: c.reg_num, dosage_form: c.dosage_form, ...drugFields(c), kind: d.kind, dose: d.dose, route: d.route, prn: !!d.prn, times: d.prn ? [] : times, prescriber: d.prescriber, start: d.start,
     prn_indication: d.prn ? d.prn_indication : '', prn_min_interval_h: d.prn ? +d.prn_min_interval_h : null, prn_max_per_24h: d.prn ? +d.prn_max_per_24h : null,
-    allergy_ack: ac.level === 'warn' ? { by: me().id, at: nowIso(), allergens: ac.allergens } : null };
+    allergy_ack: stopping ? o.allergy_ack ?? null : reuse ? reuse : ac.level === 'warn' ? { by: me().id, at: nowIso(), allergens: ac.allergens } : null };
   if (o) { const prev = {}; for (const k of Object.keys(data)) if (k !== 'allergy_ack' && JSON.stringify(o[k] ?? null) !== JSON.stringify(data[k] ?? null)) prev[k] = o[k] ?? null; // R14: order edits keep history[]
     if (Object.keys(prev).length || d.stop) (o.history ||= []).push({ at: nowIso(), by: me().id, prev, ...(d.stop ? { stop: { date: d.stop_date, reason: d.stop_reason } } : {}) });
     Object.assign(o, data); if (d.stop) Object.assign(o, { active: false, stop_date: d.stop_date, stop_reason: d.stop_reason }); stamp(o); toast(d.stop ? 'ההוראה הופסקה' : 'ההוראה עודכנה'); }
@@ -3229,7 +3244,7 @@ const IN = {
   },
   'cat-pick': el => { // picking a catalogue entry fills the route (still editable) and shows the read-only drug details
     const c = catFromPick(el.value), f = el.form, box = $('#cat-info'); if (box) box.innerHTML = catInfo(c);
-    const ab = $('#alg-box'); if (ab && f.dataset.pick !== (c?.reg_num || '')) ab.innerHTML = allergyBox(allergyConflict(res(f.dataset.rid), c)); // D6 live warning
+    const ab = $('#alg-box'); if (ab && f.dataset.pick !== (c?.reg_num || '')) ab.innerHTML = orderAllergyBox(res(f.dataset.rid), f.dataset.id && byId(S.med_orders, f.dataset.id), c); // D6 live warning
     if (c && f.dataset.pick !== c.reg_num) { f.elements.route.value = c.route; if (!f.elements.dose.value) f.elements.dose.value = doseFor(c); }
     f.dataset.pick = c ? c.reg_num : '';
   },
