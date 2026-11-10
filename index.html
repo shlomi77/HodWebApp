@@ -2719,7 +2719,7 @@ function auditRows(r) {
   return rows.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
 }
 function auditSection(r) {
-  const f = F('med_audit', { type: '', from: '', to: '' }), all = auditRows(r), types = [...new Set(all.map(x => x.type))].sort();
+  const f = resF('med_audit', { type: '', from: '', to: '' }, r.id), all = auditRows(r), types = [...new Set(all.map(x => x.type))].sort();
   const list = all.filter(x => (!f.type || x.type === f.type) && (!f.from || dkey(x.at) >= f.from) && (!f.to || dkey(x.at) <= f.to)), shown = list.slice(0, 300);
   const dateF = (k, label) => `<input type="text" inputmode="numeric" data-date placeholder="${label} dd/mm/yyyy" maxlength="10" data-ch="f" data-view="med_audit" data-k="${k}" value="${fD(f[k])}" aria-label="${label}" style="width:170px">`;
   return `<p class="hint" style="margin:0 0 8px">לקריאה בלבד. נבנה מהרשומות השמורות: יצירה, עדכון, תיקון, הסרה ומתן תרופות.${may('meds.view') ? '' : ' רשומות תרופות לא מוצגות בתפקיד הנוכחי.'}</p>
@@ -2884,7 +2884,7 @@ const labOut = x => (x.low !== '' && x.low != null && +x.value < +x.low) || (x.h
 const vSort = (a, b) => b.at.localeCompare(a.at) || String(b.created_at || b.at).localeCompare(String(a.created_at || a.at)); // a correction keeps the original time and sorts above it
 const liveVitals = rid => S.vitals.filter(v => v.resident_id === rid && !v.superseded_by).sort(vSort);
 function vitalsSection(r) {
-  const f = F('med_vitals', { type: '' }), canFix = may('clinical.vitals');
+  const f = resF('med_vitals', { type: '' }, r.id), canFix = may('clinical.vitals');
   const list = S.vitals.filter(v => v.resident_id === r.id && (!f.type || v.type === f.type)).sort(vSort);
   return `<div class="filters"><select data-ch="f" data-view="med_vitals" data-k="type" aria-label="סוג מדד">${opt('', 'כל המדדים', f.type)}${Object.entries(VITALS).map(([k, v]) => opt(k, v.name, f.type)).join('')}</select></div>
   ${list.length ? `<div class="tbl"><table><thead><tr><th>זמן</th><th>מדד</th><th>ערך</th><th>נמדד ע״י</th>${canFix ? '<th></th>' : ''}</tr></thead><tbody>${list.map(v => `<tr id="rec-${v.id}" class="${v.superseded_by ? 'superseded' : ''}"><td class="n">${fDT(v.at)}</td><td>${VITALS[v.type].name} <small class="muted">${VITALS[v.type].unit}</small></td>
@@ -2935,7 +2935,7 @@ const corrTag = x => x.superseded_by ? `<br><span class="chip">הוחלף ע״י
 /* generic list for engine sections: filters, newest first, author + time, edit per row */
 function medList(r, sec) {
   const def = MED_SECTIONS[sec], fdef = {}; for (const x of def.filters || []) fdef[x.k] = x.def ?? '';
-  const f = F('med_' + sec, fdef);
+  const f = resF('med_' + sec, fdef, r.id);
   const sk = x => def.sort === 'severity_rank' ? 9 - (SEV_ORDER[x.severity] ?? 3) + '|' + x.at : String(x[def.sort || 'at']);
   const list = clinOf(def.coll, r.id).filter(x => !x.removed && (!def.match || def.match(x, f))).sort((a, b) => sk(b).localeCompare(sk(a)) || String(b.created_at).localeCompare(String(a.created_at)));
   const canW = may(def.write);
