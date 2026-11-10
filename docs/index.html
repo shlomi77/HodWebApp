@@ -3188,7 +3188,7 @@ const ACT = {
   'dose-give': el => {
     if (!may('meds.run')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
     const { o, t } = el.dataset, ord = byId(S.med_orders, o), key = `${o}|${t}`; if (!ord || ord.prn || !ord.active || !ord.times.includes(t)) return;
-    if (doseRec(o, today(), t)) return toast('המנה כבר סומנה – כדי לשנות, בטלו קודם');
+    if (doseRec(o, today(), t)) return toast('המנה כבר סומנה – כדי לשנות, לחצו "תיקון"');
     const ackStep = el.dataset.ack === '1', ack = ackStep && !!$('#ack-cb')?.checked;
     if (ackStep && !ack) { const er = $('#ack-err'); if (er) er.textContent = ACK_ERR; $('#ack-cb')?.focus(); return; }
     const g = giveGate(ord, ack, extra => {
