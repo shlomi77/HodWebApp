@@ -776,14 +776,26 @@ function seed() {
     if (k) r.med_handling = { intake: pick(['עצמאי', 'בהשגחה', 'ע״י צוות']), purchase: pick(['עצמאי', 'משפחה', 'מוסד']) };
   }
   D.med_admin = [];
+  // SEED-02 (MQ-4): explicit demo orders run the same allergy filter as above. On a clash the order goes to the next resident by id
+  // who is at home (not gone, no open movement), has no clash and no active order of that drug, so every demo still exists
+  const seedClash = (r, c) => (r.allergies || []).some(a => allergenMatches(a, c));
+  const atHomeSeed = r => !isGone(r) && !D.movements.some(m => m.resident_id === r.id && !m.end);
+  function demoOrder(rid, reg, o) {
+    const c = catReg(reg), r0 = byId(D.residents, rid); if (!c || !r0) return null;
+    let r = !seedClash(r0, c) ? r0 : null;
+    if (!r) { const ids = D.residents.map(x => x.id).sort(), i0 = ids.indexOf(rid);
+      for (let k = 1; k < ids.length && !r; k++) { const x = byId(D.residents, ids[(i0 + k) % ids.length]);
+        if (atHomeSeed(x) && !seedClash(x, c) && !D.med_orders.some(m => m.resident_id === x.id && m.active && m.drug_reg_num === reg)) r = x; } }
+    return r ? mkOrder(r, c, o) : null;
+  }
   // double-check drugs (R11) scheduled today for three residents who are at home
   for (const [rid, reg, times, dose] of [['R003', 'DEMO-013', ['08:00', '20:00'], '10 יחידות'], ['R011', 'DEMO-014', ['20:00'], '1 טבליה'], ['R020', 'DEMO-015', ['08:00'], '0.4 מ״ל']])
-    mkOrder(byId(D.residents, rid), catReg(reg), { times, dose, start: addDays(today(), -60) });
+    demoOrder(rid, reg, { times, dose, start: addDays(today(), -60) });
   // controlled drugs (R12): two scheduled, one PRN; one facility-wide cabinet with a seed balance (D13)
-  mkOrder(byId(D.residents, 'R025'), catReg('DEMO-016'), { times: ['08:00', '20:00'], dose: '1 טבליה', start: addDays(today(), -45) });
-  mkOrder(byId(D.residents, 'R037'), catReg('DEMO-017'), { times: ['08:00'], dose: 'מדבקה אחת', start: addDays(today(), -20) });
-  const oFic = mkOrder(byId(D.residents, 'R041'), catReg('DEMO-018'), { kind: 'acute', prn: true, prn_indication: 'חרדה או אי שקט', prn_min_interval_h: 8, prn_max_per_24h: 2, start: addDays(today(), -10) });
-  { const t = ago(60 * 10); D.med_admin.push({ id: uid('MA'), order_id: oFic.id, prn: true, date: dkey(t), time: fT(t), status: 'given', indication_text: 'אי שקט בערב', at: t, by: 'U3' }); }
+  demoOrder('R025', 'DEMO-016', { times: ['08:00', '20:00'], dose: '1 טבליה', start: addDays(today(), -45) });
+  demoOrder('R037', 'DEMO-017', { times: ['08:00'], dose: 'מדבקה אחת', start: addDays(today(), -20) });
+  const oFic = demoOrder('R041', 'DEMO-018', { kind: 'acute', prn: true, prn_indication: 'חרדה או אי שקט', prn_min_interval_h: 8, prn_max_per_24h: 2, start: addDays(today(), -10) });
+  if (oFic) { const t = ago(60 * 10); D.med_admin.push({ id: uid('MA'), order_id: oFic.id, prn: true, date: dkey(t), time: fT(t), status: 'given', indication_text: 'אי שקט בערב', at: t, by: 'U3' }); }
   D.controlled_stock = { 'DEMO-016': 56, 'DEMO-017': 10, 'DEMO-018': 28 }; D.controlled_stock_at = ago(60 * 24 * 3); D.controlled_shift_counts = [];
   // PRN orders (R9) with all three rules, and a few gives today / yesterday so the interval and 24 h max blocks can be demoed
   const PRN = [['R002', 'DEMO-010', 'כאב או חום מעל 38', 6, 4, [60]], ['R004', 'DEMO-023', 'כאבי מפרקים', 8, 3, [60 * 20]], ['R008', 'DEMO-026', 'קשיי הירדמות', 24, 1, [60 * 22]],
@@ -791,7 +803,7 @@ function seed() {
     ['R026', 'DEMO-011', 'קוצר נשימה', 4, 6, []], ['R030', 'DEMO-010', 'כאב ראש', 6, 4, []]];
   for (const [rid, reg, ind, iv, mx, gives] of PRN) {
     const r = byId(D.residents, rid); if (isGone(r) || D.movements.some(m => m.resident_id === rid && !m.end)) continue;
-    const o = mkOrder(r, catReg(reg), { kind: 'acute', prn: true, prn_indication: ind, prn_min_interval_h: iv, prn_max_per_24h: mx, start: addDays(today(), -14) });
+    const o = demoOrder(rid, reg, { kind: 'acute', prn: true, prn_indication: ind, prn_min_interval_h: iv, prn_max_per_24h: mx, start: addDays(today(), -14) }); if (!o) continue;
     for (const m of gives) { const t = ago(m); D.med_admin.push({ id: uid('MA'), order_id: o.id, prn: true, date: dkey(t), time: fT(t), status: 'given', indication_text: ind, at: t, by: m > 600 ? 'U2' : 'U3' }); }
   }
   D.vitals = [];
