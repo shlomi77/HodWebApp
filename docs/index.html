@@ -1081,7 +1081,8 @@ function allergyBox(ac, name = 'allergy_ack') {
 }
 // D6 on order edit: an unchanged drug with the same matched allergens reuses the order's latest acknowledgement (no new tick)
 const allergenSet = list => [...new Set((list || []).map(norm))].sort().join('|');
-const orderLastAck = o => o ? o.allergy_ack || null : null;
+const orderAcks = o => o?.allergy_acks?.length ? o.allergy_acks : o?.allergy_ack ? [o.allergy_ack] : []; // D6-07b: append-only history, allergy_ack mirrors the latest
+const orderLastAck = o => orderAcks(o).at(-1) || null;
 function orderAckReuse(o, c, ac) {
   const last = orderLastAck(o);
   return o && c && ac.level === 'warn' && last && o.drug_reg_num === c.reg_num && allergenSet(last.allergens) === allergenSet(ac.allergens) ? last : null;
@@ -2689,6 +2690,7 @@ function auditRows(r) {
     for (const o of orders) {
       add(o.created_at, o.created_by, 'נוצר', 'הוראת תרופה', `${o.drug} · ${o.prn ? 'לפי הצורך' : o.times.join(', ')}`, 'meds');
       for (const h of Array.isArray(o.history) ? o.history : []) add(h.at, h.by, 'עודכן', 'הוראת תרופה', `${o.drug} · ${h.stop ? `הוראה הופסקה: ${auditClip(h.stop.reason, 50)}` : 'שונו: ' + Object.keys(h.prev).map(k => ORDER_KEYS[k]).filter(Boolean).join(', ')}`, 'meds');
+      for (const k of orderAcks(o)) add(k.at, k.by, 'אושרה אזהרת רגישות', 'הוראת תרופה', `${catByReg(k.drug_reg_num) ? drugFields(catByReg(k.drug_reg_num)).drug : o.drug} · ${(k.allergens || []).join(', ')}`, 'meds'); // D6-07b, meds line (D16)
       if (!o.active && o.stop_date && !(o.history || []).some(h => h.stop)) add(at(o.stop_date, '12:00'), o.updated_by, 'עודכן', 'הוראת תרופה', `${o.drug} · הוראה הופסקה: ${o.stop_reason || '—'}`, 'meds');
     }
     for (const a of S.med_admin.filter(x => byO[x.order_id])) { const o = byO[a.order_id], type = a.prn ? 'מתן לפי הצורך' : 'מתן תרופה', when = a.prn ? fDT(a.at) : `${fD(a.date)} ${a.time}`;
@@ -2708,7 +2710,7 @@ function auditSection(r) {
   return `<p class="hint" style="margin:0 0 8px">לקריאה בלבד. נבנה מהרשומות השמורות: יצירה, עדכון, תיקון, הסרה ומתן תרופות.${may('meds.view') ? '' : ' רשומות תרופות לא מוצגות בתפקיד הנוכחי.'}</p>
   <div class="filters"><select data-ch="f" data-view="med_audit" data-k="type" aria-label="סוג רשומה">${opt('', 'כל הסוגים', f.type)}${types.map(t => opt(t, t, f.type)).join('')}</select>${dateF('from', 'מתאריך')}${dateF('to', 'עד תאריך')}<span class="sub muted">${list.length} רשומות</span></div>
   ${shown.length ? `<div class="tbl"><table><thead><tr><th>זמן</th><th>משתמש/ת</th><th>פעולה</th><th>סוג</th><th>תקציר</th><th></th></tr></thead><tbody>
-  ${shown.map(x => `<tr><td class="n">${fDT(x.at)}</td><td>${esc(uname(x.by))}</td><td><span class="chip ${{ 'תוקן': 'warn', 'בוטל בתיקון': 'red', 'הוסר': 'red', 'לא ניתן': 'red', 'ניתן': 'ok', 'אימות כפול': 'blue' }[x.action] || ''}">${esc(x.action)}</span></td><td>${esc(x.type)}</td><td>${esc(x.summary)}</td>
+  ${shown.map(x => `<tr><td class="n">${fDT(x.at)}</td><td>${esc(uname(x.by))}</td><td><span class="chip ${{ 'תוקן': 'warn', 'בוטל בתיקון': 'red', 'הוסר': 'red', 'לא ניתן': 'red', 'ניתן': 'ok', 'אימות כפול': 'blue', 'אושרה אזהרת רגישות': 'warn' }[x.action] || ''}">${esc(x.action)}</span></td><td>${esc(x.type)}</td><td>${esc(x.summary)}</td>
     <td>${x.sec ? `<a href="#/cat/medical/${r.id}/${x.sec}">לסעיף</a>` : ''}</td></tr>`).join('')}</tbody></table></div>${list.length > shown.length ? `<p class="hint">מוצגות ${shown.length} הרשומות האחרונות. צמצמו בעזרת הסינון.</p>` : ''}` : empty('אין רשומות להצגה', 'נסו לשנות את הסינון.')}`;
 }
 /* medications tab (R7b): extends S.med_orders without breaking #/meds (drug / active / times / prn kept) */
@@ -2802,11 +2804,15 @@ function saveMedOrder(form) {
   if (!showErrors(form, e)) return;
   const data = { drug_reg_num: c.reg_num, dosage_form: c.dosage_form, ...drugFields(c), kind: d.kind, dose: d.dose, route: d.route, prn: !!d.prn, times: d.prn ? [] : times, prescriber: d.prescriber, start: d.start,
     prn_indication: d.prn ? d.prn_indication : '', prn_min_interval_h: d.prn ? +d.prn_min_interval_h : null, prn_max_per_24h: d.prn ? +d.prn_max_per_24h : null,
-    allergy_ack: stopping ? o.allergy_ack ?? null : reuse ? reuse : ac.level === 'warn' ? { by: me().id, at: nowIso(), allergens: ac.allergens } : null };
+    allergy_ack: null };
+  // MQ-3: a new acknowledgement entry only when the tick was actually required and given; entries are never removed
+  const newAck = ac.level === 'warn' && !reuse ? { by: me().id, at: nowIso(), allergens: ac.allergens, drug_reg_num: c.reg_num } : null;
+  data.allergy_ack = stopping ? o.allergy_ack ?? null : reuse || newAck;
   if (o) { const prev = {}; for (const k of Object.keys(data)) if (k !== 'allergy_ack' && JSON.stringify(o[k] ?? null) !== JSON.stringify(data[k] ?? null)) prev[k] = o[k] ?? null; // R14: order edits keep history[]
     if (Object.keys(prev).length || d.stop) (o.history ||= []).push({ at: nowIso(), by: me().id, prev, ...(d.stop ? { stop: { date: d.stop_date, reason: d.stop_reason } } : {}) });
+    if (newAck) { if (!Array.isArray(o.allergy_acks)) o.allergy_acks = o.allergy_ack ? [o.allergy_ack] : []; o.allergy_acks.push(newAck); }
     Object.assign(o, data); if (d.stop) Object.assign(o, { active: false, stop_date: d.stop_date, stop_reason: d.stop_reason }); stamp(o); toast(d.stop ? 'ההוראה הופסקה' : 'ההוראה עודכנה'); }
-  else { S.med_orders.push(stamp({ id: 'MO' + (1 + Math.max(0, ...S.med_orders.map(x => +x.id.slice(2)))), resident_id: r.id, ...data, active: true, stop_date: null, stop_reason: '' }, true)); toast('ההוראה נוספה'); }
+  else { S.med_orders.push(stamp({ id: 'MO' + (1 + Math.max(0, ...S.med_orders.map(x => +x.id.slice(2)))), resident_id: r.id, ...data, allergy_acks: newAck ? [newAck] : [], active: true, stop_date: null, stop_reason: '' }, true)); toast('ההוראה נוספה'); }
   medF().sel = []; closePanel(); refresh();
 }
 function panelMedHandling(p) {
