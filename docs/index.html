@@ -70,7 +70,7 @@ svg.i{width:18px;height:18px;flex:none;vertical-align:middle}
 .brand .logo{width:36px;height:36px;border-radius:10px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
 .brand b{font-size:18px;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
 .gsearch{flex:1 1 280px;max-width:520px;position:relative;min-width:0}
-.gsearch input{width:100%;height:42px;border:1.5px solid var(--line);background:var(--bg);border-radius:12px;padding:0 40px 0 44px;font-size:16px}
+.gsearch input[type=search]{width:100%;height:42px;border:1.5px solid var(--line);background:var(--bg);border-radius:12px;padding:0 40px 0 44px;font-size:16px}
 .gsearch input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .gsearch .i{position:absolute;right:12px;top:12px;color:var(--muted);pointer-events:none}
 .gsearch kbd{position:absolute;left:10px;top:10px;font-size:12px;border:1px solid var(--line);border-radius:5px;padding:1px 7px;color:var(--muted);background:var(--surface)}
@@ -238,10 +238,37 @@ details.more[open]{padding-bottom:12px}
 .ob.sub{border-style:dashed}
 .ob.apt-t{border-color:var(--line-2);color:var(--muted);font-size:13.5px;padding:0 7px;display:inline-flex;align-items:center;gap:3px}
 .ob.apt-t[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
-.ob.ev{border-color:transparent;color:var(--muted);padding:0 8px}
+.ob.ev{border-color:transparent;background:transparent;color:var(--muted);padding:0 8px}
 .ob.ev:hover{background:var(--warn-soft);color:var(--warn);border-color:transparent}
 .done-info{font-size:14.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;justify-content:flex-end}
 .done-info b{color:var(--ok)}
+/* whole-apartment mode: every row of that apartment is tinted, mates say they're included */
+.rrow.apt-on,.rrow.apt-on:not(.hdr):hover{background:var(--accent-soft);box-shadow:inset -4px 0 0 var(--accent)}
+.apt-inc{display:inline-flex;align-items:center;gap:6px;color:var(--accent);font-weight:700;font-size:14.5px;min-height:30px}
+.apt-inc svg{width:18px;height:18px}
+.rother{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;justify-content:space-between;margin-bottom:10px}
+/* narrow list (phone / narrow window): the outcome buttons share one line, the alert button stays on it */
+@container (max-width:840px){
+  .rrow .outs{flex-wrap:nowrap;gap:6px;padding-top:4px}
+  .rrow .ob{flex:1 1 0;min-width:0;min-height:44px;padding:4px 6px;white-space:normal;line-height:1.15;font-size:14.5px}
+  .rrow .ob.ev,.rrow .ob.visit.x{flex:0 0 44px;padding:0}
+  .rrow .ob.apt-t{flex:none;min-height:44px;min-width:44px;justify-content:center}
+  .rrow .tel{min-height:44px;min-width:44px;justify-content:center}
+}
+@media (max-width:700px){
+  /* phone: 2 rows – round + status / progress + icon actions */
+  .rhead{gap:8px 10px}
+  .rhead > div:first-child{flex:1 1 220px;min-width:0}
+  .rhead select.rsel{width:100%;font-size:17px}
+  .rhead .prog{flex:1 1 180px;min-width:0}
+  .rhead .actions{margin-inline-start:auto}
+  .rhead .actions{flex-wrap:nowrap;gap:6px}
+  .rhead .actions .btn{min-height:44px;min-width:44px;padding:0 10px;font-size:14px}
+  .rhead .actions .lbl{display:none}
+  .rtabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .rtab{flex-direction:column;justify-content:center;gap:0;padding:4px;min-height:54px;font-size:14.5px;line-height:1.2;text-align:center}
+  .rtab .c{order:-1;font-size:22px;line-height:1.1}
+}
 .rnote{margin-top:14px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start}
 .legend-print{display:none}
 
@@ -347,6 +374,9 @@ tr.stopped td{opacity:.55}
 .ucard b{display:block;font-size:16.5px}
 .ucard small{color:var(--muted);font-size:13.5px}
 
+.toast.has-act{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-block:6px;width:max-content;min-width:min(360px,calc(100% - 32px))}
+.toast-act{border:1.5px solid var(--bg);background:transparent;color:var(--bg);border-radius:9px;min-height:44px;padding:0 16px;font-weight:800;font-size:15px;flex:none}
+.toast-act:hover{background:var(--bg);color:var(--fg)}
 .toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);border-radius:12px;padding:10px 16px;box-shadow:var(--shadow);z-index:80;font-size:15px;font-weight:600;max-width:calc(100% - 32px)}
 .kbdhelp{font-size:12.5px;color:var(--muted)}
 .kbdhelp kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;background:var(--surface)}
@@ -373,6 +403,15 @@ tr.stopped td{opacity:.55}
 @media (max-width:700px){
   .demo-strip{font-size:13px}
   .top{top:0;position:relative}
+  /* phone header in 3 rows instead of 4: name / search + report / clock + user */
+  .top{gap:8px 10px}
+  .top .brand{flex:1 1 100%}
+  .top .gsearch{order:1;flex:1 1 190px}
+  .top > .btn[data-act="new-event"]{order:2}
+  .top .clock{order:3;font-size:15.5px}
+  .top .me{order:4;margin-inline-start:auto}
+  .top .me > svg,.top .sp,.top .gsearch kbd{display:none}
+  .top .gsearch input{padding-left:12px}
   .shell{grid-template-columns:minmax(0,1fr)}
   .nav{position:sticky;top:var(--strip-h,27px);z-index:15;height:auto;flex-direction:row;overflow-x:auto;border-inline-end:0;border-bottom:1px solid var(--line);padding:4px}
   .nav a{min-width:68px;flex:none}
@@ -1242,7 +1281,11 @@ function renderModal() {
 }
 function refresh() { save(); renderNav(); renderMain(); renderPanel(); }
 let _toastT;
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(_toastT); _toastT = setTimeout(() => t.hidden = true, 3200); }
+function toast(msg, action) {
+  const t = $('#toast'); t.textContent = msg; t.classList.toggle('has-act', !!action);
+  if (action) { const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-act'; b.dataset.act = action.act; b.textContent = action.label; if (action.title) b.title = action.title; t.append(b); }
+  t.hidden = false; clearTimeout(_toastT); _toastT = setTimeout(() => { t.hidden = true; action?.onEnd?.(); }, action?.ms || 3200);
+}
 function download(name, text, type) { const b = new Blob([text], { type }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
 function csv(rows) { return '﻿' + rows.map(r => r.map(c => { c = String(c ?? ''); return /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c; }).join(',')).join('\r\n'); }
 const opt = (v, label, sel) => `<option value="${esc(v)}"${String(sel ?? '') === String(v) ? ' selected' : ''}>${esc(label)}</option>`;
@@ -1339,6 +1382,13 @@ function renderNav() {
   $('#nav').innerHTML = (may('home.view') ? `<a href="#/home" ${cur === 'home' ? 'aria-current="page"' : ''}>${ic('home')}<span>ראשי</span></a>` : '') + NAV.filter(n => may(n.perm)).map(n => `<a href="#/${n.id}" ${cur === n.id ? 'aria-current="page"' : ''}${altKeyOf(n.id) ? ` title="Alt+${altKeyOf(n.id)}"` : ''}>${ic(n.icon)}<span>${n.name}</span>${navBadge(n.id)}</a>`).join('')
     + `<div class="foot"><span class="kbdhelp"><kbd>/</kbd> חיפוש · <kbd>Esc</kbd> סגירה · <kbd>Alt</kbd>+<kbd>0-9</kbd> מסכים</span><button data-act="theme">החלפת מצב תצוגה (בהיר/כהה)</button></div>`;
 }
+/* the round screen follows the current round: when the evening round opens (14:00) it switches by itself, unless another round was picked */
+function followCurrentRound() {
+  const f = UI.f.round, a = document.activeElement; if (!me() || UI.route !== 'round' || !f || f.pick || UI.confirm || UI.panel || UI.modal) return;
+  if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && $('#main').contains(a)) return; // don't swap the screen while the user is typing
+  const shown = byId(S.rounds, f.rid); if (!shown || (shown.date === today() && shown.shift === roundShiftNow())) return;
+  UI.open.visit = null; f.tab = 'pending'; renderMain(); renderNav(); toast(`נפתח ${roundName(curRound())}`);
+}
 function tick() { const c = $('#clock'); if (c) { const d = new Date(); c.textContent = `${dow(today())}, ${fD(d)} · ${fT(d)}`; } }
 
 function viewLogin() {
@@ -1419,12 +1469,12 @@ function syncRounds(rid) {
   }
 }
 function locate(rd, rids, method) {
-  const t = nowIso(), by = me().id; let n = 0;
+  const t = nowIso(), by = me().id; let n = 0; locate.last = { ids: [], at: t, by };
   for (const rid of rids) {
     const e = rd.entries.find(x => x.resident_id === rid); if (!e) continue;
     if (e.status === 'located') { toast(`${fullName(res(rid))} כבר ${g(res(rid), 'אותר', 'אותרה')}. כדי לשנות – ביטול קודם.`); continue; }
     if (e.status !== 'pending') continue;
-    Object.assign(e, { status: 'located', method, at: t, by }); e.history.push({ status: 'located', method, at: t, by }); n++;
+    Object.assign(e, { status: 'located', method, at: t, by }); e.history.push({ status: 'located', method, at: t, by }); n++; locate.last.ids.push(rid);
   }
   rd.updated_at = t; rd.updated_by = by; UI.flash = rids; checkRoundDone(rd); return n;
 }
@@ -1433,9 +1483,10 @@ const roundName = rd => `סבב ${SHIFT[rd.shift]} · ${dow(rd.date)} ${fD(rd.da
 
 function viewRound() {
   const cur = currentRound(true);
-  const f = F('round', { tab: 'pending', b: '', fl: '', q: '', rid: null });
+  const f = F('round', { tab: 'pending', b: '', fl: '', q: '', rid: null, pick: null });
   if (UI.query.tab) f.tab = UI.query.tab;
-  let rd = (f.rid && byId(S.rounds, f.rid)) || cur; f.rid = rd.id;
+  // show the current round unless the user picked another one (so 14:00 moves the screen to the evening round)
+  let rd = (f.pick && byId(S.rounds, f.pick)) || cur; f.rid = rd.id; if (rd === cur) f.pick = null;
   const c = roundCounts(rd), tot = c.pending + c.located, pct = tot ? Math.round(c.located / tot * 100) : 100;
   const rounds = [...S.rounds].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 14);
   const ents = rd.entries.map(e => ({ e, r: res(e.resident_id) })).filter(x => x.r).filter(({ e, r }) => e.status === f.tab
@@ -1444,19 +1495,21 @@ function viewRound() {
     .sort((a, b) => sortApt(a.r, b.r));
   const canRun = may('rounds.run') && rd.status !== 'closed_manually', canManage = may('rounds.manage');
   const pendingByApt = {}; for (const e of rd.entries) if (e.status === 'pending') { const r = res(e.resident_id); (pendingByApt[r.unit_id + r.apartment] ||= []).push(r.id); }
+  const aptOn = {}; for (const [k, ids] of Object.entries(pendingByApt)) { const lead = ids.find(id => UI.open['apt:' + id]); if (lead && ids.length > 1) aptOn[k] = lead; }
   const hdr = f.tab === 'pending' ? 'אפשרויות איתור' : f.tab === 'located' ? 'אותר – מתי, איך, ע״י מי' : 'סיבה';
   const rows = ents.map(({ e, r }) => {
-    const u = unitOf(r), aptMates = pendingByApt[r.unit_id + r.apartment] || [], aptMode = UI.open['apt:' + r.id] && aptMates.length > 1;
+    const u = unitOf(r), aptKey = r.unit_id + r.apartment, aptMates = pendingByApt[aptKey] || [], aptLead = e.status === 'pending' ? aptOn[aptKey] : null, aptMode = aptLead === r.id;
     let outs = '';
-    if (e.status === 'pending' && canRun) {
+    if (e.status === 'pending' && canRun && aptLead && !aptMode) {
+      outs = `<div class="outs"><span class="apt-inc">${ic('users')} ${g(r, 'כלול', 'כלולה')} בסימון לכל דירה ${esc(r.apartment)}</span></div>`;
+    } else if (e.status === 'pending' && canRun) {
       const visitOpen = UI.open.visit === r.id;
       outs = `<div class="outs">
-        ${aptMode ? '<span class="chip acc">לכל הדירה:</span>' : ''}
-        ${visitOpen ? `<button class="ob sub" data-act="loc" data-id="${r.id}" data-m="visit_apartment">אותר בדירה</button><button class="ob sub" data-act="loc" data-id="${r.id}" data-m="visit_outside">אותר מחוץ לבניין</button><button class="ob visit" data-act="visit" data-id="${r.id}" aria-expanded="true" aria-label="חזרה" title="חזרה">✕</button>`
-          : `<button class="ob" data-act="loc" data-id="${r.id}" data-m="seen">${g(r, 'ראיתי אותו', 'ראיתי אותה')}</button>
-        <button class="ob" data-act="loc" data-id="${r.id}" data-m="phone">ענה בטלפון</button>
+        ${visitOpen ? `<button class="ob sub" data-act="loc" data-id="${r.id}" data-m="visit_apartment">${aptMode ? 'אותרו בדירה' : 'אותר בדירה'}</button><button class="ob sub" data-act="loc" data-id="${r.id}" data-m="visit_outside">${aptMode ? 'אותרו מחוץ לבניין' : 'אותר מחוץ לבניין'}</button><button class="ob visit x" data-act="visit" data-id="${r.id}" aria-expanded="true" aria-label="חזרה לאפשרויות" title="חזרה">✕</button>`
+          : `<button class="ob" data-act="loc" data-id="${r.id}" data-m="seen">${aptMode ? 'ראיתי את כולם' : g(r, 'ראיתי אותו', 'ראיתי אותה')}</button>
+        <button class="ob" data-act="loc" data-id="${r.id}" data-m="phone">${aptMode ? 'ענו בטלפון' : 'ענה בטלפון'}</button>
         <button class="ob visit" data-act="visit" data-id="${r.id}" aria-expanded="false">ביקור פיזי בדירה</button>`}
-        <button class="ob ev" data-act="new-event" data-rid="${r.id}" title="דיווח אירוע חריג על ${esc(fullName(r))}" aria-label="דיווח אירוע">${ic('alert')}</button>
+        <button class="ob ev" data-act="new-event" data-rid="${r.id}" title="דיווח אירוע חריג על ${esc(fullName(r))}" aria-label="דיווח אירוע חריג על ${esc(fullName(r))}">${ic('alert')}</button>
       </div>`;
     } else if (e.status === 'pending') outs = `<div class="done-info">ממתין לאיתור</div>`;
     else if (e.status === 'located') {
@@ -1464,8 +1517,8 @@ function viewRound() {
       outs = `<div class="done-info"><b>${METHOD[e.method]}</b><span class="num">${fT(e.at)}</span><span>${esc(uname(e.by))}</span>
         ${canManage && rd.status !== 'closed_manually' ? (UI.confirm === k ? `<span class="confirm">סיבת ביטול: <input id="undo-reason" type="text" placeholder="לפחות 2 תווים" aria-label="סיבת ביטול"><button class="btn sm danger" data-act="undo-loc" data-id="${r.id}">בטל איתור</button><button class="btn sm" data-act="confirm-cancel">חזרה</button><span class="err" id="undo-err"></span></span>` : `<button class="btn sm" data-act="confirm" data-key="${k}">ביטול</button>`) : ''}</div>`;
     } else outs = `<div class="done-info"><span class="chip vio">${esc(e.reason || 'לא לאיתור')}</span></div>`;
-    return `<div class="rrow${(UI.flash || []).includes(r.id) ? ' flash' : ''}">
-      <span class="apt">${esc(r.apartment)}${e.status === 'pending' && canRun && aptMates.length > 1 ? `<button class="ob apt-t" data-act="apt-toggle" data-id="${r.id}" aria-pressed="${!!aptMode}" title="סימון אחד לכל ${aptMates.length} הדיירים בדירה" aria-label="סימון לכל הדירה">${ic('users')}${aptMates.length}</button>` : ''}</span>
+    return `<div class="rrow${(UI.flash || []).includes(r.id) ? ' flash' : ''}${aptLead ? ' apt-on' : ''}" data-rid="${r.id}">
+      <span class="apt">${esc(r.apartment)}${e.status === 'pending' && canRun && aptMates.length > 1 && (!aptLead || aptMode) ? `<button class="ob apt-t" data-act="apt-toggle" data-id="${r.id}" aria-pressed="${!!aptMode}" title="${aptMode ? 'ביטול הסימון לכל הדירה' : `סימון אחד לכל ${aptMates.length} הדיירים בדירה`}" aria-label="${aptMode ? 'ביטול הסימון לכל הדירה' : `סימון אחד לכל ${aptMates.length} הדיירים בדירה`}">${ic('users')}${aptMates.length}</button>` : ''}</span>
       <span class="ln"><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(r.last_name)}</button></span>
       <span class="fn"><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(r.first_name)}</button></span>
       <span class="loc">קומה ${u.floor} · ${u.building}</span>
@@ -1483,13 +1536,14 @@ function viewRound() {
     <div class="prog"><div class="pbar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
       <div class="ptext">אותרו <b class="num">${c.located}</b> מתוך <b class="num">${tot}</b> <span class="muted">· ${c.excluded} לא לאיתור</span></div></div>
     <div class="actions no-print">
-      <button class="btn" data-act="print">${ic('print')} הדפסה</button>
-      ${may('rounds.run') ? `<button class="btn" data-act="confirm" data-key="add-round">${ic('plus')} הוספת סבב</button>` : ''}
+      <button class="btn" data-act="print" title="הדפסה" aria-label="הדפסה">${ic('print')}<span class="lbl"> הדפסה</span></button>
+      ${may('rounds.run') ? `<button class="btn" data-act="confirm" data-key="add-round" title="הוספת סבב" aria-label="הוספת סבב">${ic('plus')}<span class="lbl"> הוספת סבב</span></button>` : ''}
       ${canManage && rd.status === 'open' ? `<button class="btn" data-act="confirm" data-key="${closeKey}">סגירת סבב</button>` : ''}
     </div>
   </div>
   ${UI.confirm === 'add-round' ? `<div class="confirm" style="margin-bottom:10px">להוסיף סבב ידני להיום: <button class="btn sm pri" data-act="add-round" data-shift="morning">סבב בוקר</button><button class="btn sm pri" data-act="add-round" data-shift="evening">סבב ערב</button><button class="btn sm" data-act="confirm-cancel">ביטול</button></div>` : ''}
   ${UI.confirm === closeKey ? `<div class="confirm" style="margin-bottom:10px">סגירה ידנית של הסבב${c.pending ? ` – עדיין <b>${c.pending}</b> לא אותרו, חובה לכתוב הערה` : ''}: <input id="close-note" type="text" placeholder="הערת סגירה" aria-label="הערת סגירה" style="min-width:260px"><button class="btn sm danger" data-act="close-round">סגור סבב</button><button class="btn sm" data-act="confirm-cancel">ביטול</button><span class="err" id="close-err"></span></div>` : ''}
+  ${rd.id !== cur.id ? `<div class="note-inline rother screen-only"><span>זה לא הסבב הנוכחי. הסבב הנוכחי: <b>${esc(roundName(cur))}</b></span><button class="btn sm pri" data-act="round-current">מעבר לסבב הנוכחי</button></div>` : ''}
   ${rd.status === 'closed_manually' ? `<p class="note-inline">הסבב נסגר ידנית ע״י ${esc(uname(rd.closed_by))} ב-${fDT(rd.closed_at)}${rd.close_note ? ': ' + esc(rd.close_note) : ''}</p>` : ''}
   <div class="rtabs screen-only" role="tablist">${['pending', 'located', 'excluded'].map(s => `<button class="rtab" role="tab" data-s="${s}" aria-selected="${f.tab === s}" data-act="round-tab" data-tab="${s}">${tabsLbl[s]} <span class="c">${c[s]}</span></button>`).join('')}</div>
   <div class="filters screen-only">
@@ -3116,6 +3170,14 @@ const PANELS = { prngive: panelPrnGive, medorder: panelMedOrder, medhandling: pa
    Event wiring: clicks, inputs, changes, submits, keyboard, routing
    ================================================================ */
 const curRound = () => byId(S.rounds, UI.f.round?.rid) || currentRound(true);
+const UNDO_MS = 10000;
+/* keyboard: re-renders replace the list, so put focus back where the user was working */
+const refocus = sel => { const n = typeof sel === 'string' ? $(sel) : sel; if (n) n.focus({ preventScroll: true }); };
+const roundRowIdx = rid => $$('#main .rrow[data-rid]').findIndex(x => x.dataset.rid === rid);
+function focusRoundRow(idx) {
+  const rows = $$('#main .rrow[data-rid]'), row = rows[Math.min(idx, rows.length - 1)];
+  refocus(row?.querySelector('[data-act="loc"],[data-act="visit"],[data-act="apt-toggle"]') || $('.rtab[aria-selected="true"]'));
+}
 const reqVal = (sel, errSel, min = 2, msg = 'כתבו סיבה (לפחות 2 תווים)') => { const v = ($(sel)?.value || '').trim(); if (v.length < min) { const e = $(errSel); if (e) e.textContent = msg; toast(msg); $(sel)?.focus(); return null; } return v; };
 const ACT = {
   'switch-user': () => logout(false),
@@ -3130,16 +3192,38 @@ const ACT = {
   print: el => { if (el.closest('#panel')) document.body.classList.add('print-panel'); window.print(); },
   'print-summary': () => { document.body.classList.add('print-summary'); window.print(); },
   // rounds
-  'round-tab': el => { UI.f.round.tab = el.dataset.tab; UI.open.visit = null; renderMain(); },
-  'round-f': el => { UI.f.round[el.dataset.k] = el.dataset.v; renderMain(); },
-  visit: el => { UI.open.visit = UI.open.visit === el.dataset.id ? null : el.dataset.id; renderMain(); },
-  'apt-toggle': el => { const k = 'apt:' + el.dataset.id; UI.open[k] = !UI.open[k]; renderMain(); },
+  'round-tab': el => { UI.f.round.tab = el.dataset.tab; UI.open.visit = null; renderMain(); refocus(`.rtab[data-tab="${el.dataset.tab}"]`); },
+  'round-f': el => { UI.f.round[el.dataset.k] = el.dataset.v; renderMain(); refocus(`[data-act="round-f"][data-k="${el.dataset.k}"][data-v="${el.dataset.v}"]`); },
+  'round-current': () => { UI.f.round.pick = null; UI.f.round.tab = 'pending'; UI.confirm = null; renderMain(); refocus('#rsel'); },
+  visit: el => { const id = el.dataset.id; UI.open.visit = UI.open.visit === id ? null : id; renderMain(); refocus(UI.open.visit ? `[data-act="loc"][data-id="${id}"]` : `[data-act="visit"][data-id="${id}"]`); },
+  'apt-toggle': el => { const id = el.dataset.id, k = 'apt:' + id; UI.open[k] = !UI.open[k]; UI.open.visit = null; renderMain(); refocus(`[data-act="apt-toggle"][data-id="${id}"]`); },
   loc: el => {
     const rd = curRound(), r = res(el.dataset.id); if (!may('rounds.run')) return;
     let ids = [r.id];
     if (UI.open['apt:' + r.id]) ids = rd.entries.filter(e => e.status === 'pending').map(e => res(e.resident_id)).filter(x => x.unit_id === r.unit_id && x.apartment === r.apartment).map(x => x.id);
-    const n = locate(rd, ids, el.dataset.m); UI.open.visit = null; UI.open['apt:' + r.id] = false;
-    save(); renderMain(); renderNav(); if (n && rd.status === 'open') toast(n > 1 ? `${n} דיירים מדירה ${r.apartment} סומנו – ${METHOD[el.dataset.m]}` : `${fullName(r)} – ${METHOD[el.dataset.m]} ✓`);
+    const idx = roundRowIdx(r.id), n = locate(rd, ids, el.dataset.m); UI.open.visit = null; UI.open['apt:' + r.id] = false;
+    save(); renderMain(); renderNav(); focusRoundRow(idx);
+    if (n) {
+      const m = UI.lastMark = { rd: rd.id, ...locate.last, until: Date.now() + UNDO_MS };
+      toast(rd.status === 'completed' ? 'כל הדיירים אותרו – הסבב הושלם ✓' : n > 1 ? `${n} דיירים מדירה ${r.apartment} סומנו – ${METHOD[el.dataset.m]}` : `${fullName(r)} – ${METHOD[el.dataset.m]} ✓`,
+        { act: 'self-undo', label: 'ביטול', title: 'ביטול הסימון האחרון (Ctrl+Z)', ms: UNDO_MS, onEnd: () => { if (UI.lastMark === m) UI.lastMark = null; } });
+    }
+  },
+  /* reception's own mis-tap: undo the last mark within 10 seconds, saved in history as סומן בטעות (decided 11/11) */
+  'self-undo': () => {
+    const m = UI.lastMark; UI.lastMark = null; $('#toast').hidden = true;
+    if (!m || m.by !== me()?.id || Date.now() > m.until) { toast('עבר הזמן לביטול. אחראי/ת משמרת יכול/ה לבטל עם סיבה.'); return; }
+    const rd = byId(S.rounds, m.rd); if (!rd || rd.status === 'closed_manually') return;
+    const t = nowIso(), back = [];
+    for (const rid of m.ids) {
+      const e = rd.entries.find(x => x.resident_id === rid); if (!e || e.status !== 'located' || e.by !== m.by || e.at !== m.at) continue;
+      const ex = exclusionReason(res(rid));
+      e.history.push({ status: ex ? 'excluded' : 'pending', action: 'undo', reason: 'סומן בטעות', self_undo: true, prev_method: e.method, at: t, by: m.by });
+      Object.assign(e, { status: ex ? 'excluded' : 'pending', method: null, at: null, by: null, reason: ex }); back.push(rid);
+    }
+    if (!back.length) return;
+    checkRoundDone(rd, true); stamp(rd); UI.flash = back; refresh(); refocus(`[data-act="loc"][data-id="${back[0]}"]`);
+    toast(back.length > 1 ? `הסימון של ${back.length} דיירים בוטל – חזרו לטרם אותרו` : `הסימון בוטל – ${fullName(res(back[0]))} ${g(res(back[0]), 'חזר', 'חזרה')} לטרם אותרו`);
   },
   'undo-loc': el => {
     const reason = reqVal('#undo-reason', '#undo-err'); if (!reason) return; const rd = curRound(), r = res(el.dataset.id), e = rd.entries.find(x => x.resident_id === r.id);
@@ -3147,7 +3231,7 @@ const ACT = {
     e.history.push({ status: ex ? 'excluded' : 'pending', action: 'undo', reason, prev_method: e.method, at: t, by: me().id });
     Object.assign(e, { status: ex ? 'excluded' : 'pending', method: null, at: null, by: null, reason: ex }); checkRoundDone(rd, true); stamp(rd); UI.confirm = null; refresh(); toast('האיתור בוטל ונשמר בהיסטוריה');
   },
-  'add-round': el => { const rd = createRound(today(), el.dataset.shift, true); UI.f.round.rid = rd.id; UI.f.round.tab = 'pending'; UI.confirm = null; refresh(); toast(`נוסף ${roundName(rd)}`); },
+  'add-round': el => { const rd = createRound(today(), el.dataset.shift, true); UI.f.round.pick = rd.id; UI.f.round.tab = 'pending'; UI.confirm = null; refresh(); toast(`נוסף ${roundName(rd)}`); },
   'close-round': () => {
     const rd = curRound(), c = roundCounts(rd), note = ($('#close-note')?.value || '').trim();
     if (c.pending && note.length < 2) { $('#close-err').textContent = 'יש דיירים שלא אותרו – חובה לכתוב הערה'; $('#close-note').focus(); return; }
@@ -3270,7 +3354,7 @@ const ACT = {
   // reports
   'rep-tab': el => { UI.f.reports.tab = el.dataset.v; renderMain(); },
   'calls-csv': () => exportCallsCsv(),
-  'goto-round': el => { F('round', {}); UI.f.round.rid = el.dataset.id; UI.f.round.tab = 'located'; go('#/round'); },
+  'goto-round': el => { F('round', {}); UI.f.round.pick = el.dataset.id; UI.f.round.tab = 'located'; go('#/round'); },
   // settings
   'cat-move': el => { const cats = [...S.service_categories].sort((a, b) => a.order - b.order), i = cats.findIndex(c => c.id === el.dataset.id), j = i + +el.dataset.d; if (j < 0 || j >= cats.length) return; [cats[i].order, cats[j].order] = [cats[j].order, cats[i].order]; refresh(); },
   'reset-data': () => { reseed(); UI.f = {}; UI.panel = null; UI.confirm = null; UI.edit = null; UI.dirty = false; if (!me()) return logout(false); render(); toast('נתוני ההדגמה אופסו'); },
@@ -3301,7 +3385,7 @@ const IN = {
   vital: el => { const v = el.value.trim(), def = VITALS[el.dataset.k], bad = v && def.ok && !def.ok(v); el.classList.toggle('inv', !!bad); const er = el.form.querySelector(`.err[data-for="${el.dataset.k}"]`); er.textContent = bad ? 'מחוץ לטווח התקין – יסומן באדום' : ''; },
 };
 const CH = {
-  'round-pick': el => { UI.f.round.rid = el.value; UI.confirm = null; renderMain(); },
+  'round-pick': el => { UI.f.round.pick = el.value; UI.confirm = null; renderMain(); },
   'round-floor': el => { UI.f.round.fl = el.value; renderMain(); },
   'round-note': el => { const rd = curRound(); rd.note = el.value; stamp(rd); save(); toast('הערת הסבב נשמרה'); },
   f: IN.f,
@@ -3451,6 +3535,7 @@ document.addEventListener('keydown', ev => {
     if (ev.key === 'Escape') { ev.target.value = ''; box.hidden = true; ev.target.blur(); return; }
   }
   if (ev.key === 'Escape' && UI.modal) { closeModal(true); return; }
+  if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'ז' || ev.code === 'KeyZ') && UI.lastMark && !/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) { ev.preventDefault(); ACT['self-undo'](); return; }
   if (ev.key === 'Escape') { if (UI.confirm) { UI.confirm = null; renderMain(); renderPanel(); } else if (UI.open.visit || UI.open.ng || UI.open.undo || UI.open.adm || UI.open.ack || UI.open.prnfix) { UI.open.visit = UI.open.ng = UI.open.undo = UI.open.adm = UI.open.ack = UI.open.prnfix = null; renderMain(); } else if (UI.panel) closePanel(); return; }
   if (ev.key === '/' && !typing && me()) { ev.preventDefault(); $('#gq')?.focus(); return; }
   if (ev.altKey && /^[0-9]$/.test(ev.key) && me()) { const n = navShortcuts()[ev.key === '0' ? 9 : +ev.key - 1]; if (n) { ev.preventDefault(); go('#/' + n.id); } }
@@ -3477,7 +3562,7 @@ window.addEventListener('hashchange', () => {
   if (me()) { if (!UI.route) { history.replaceState(null, '', '#/' + homeRoute()); parseHash(); } }
   else UI.deepLink = UI.loggedOutIdle ? null : deepLinkOf();
   UI.lastHash = location.hash; render();
-  setInterval(() => { tick(); checkIdle(); }, 15000);
+  setInterval(() => { tick(); checkIdle(); followCurrentRound(); }, 15000);
   setInterval(() => { if (me() && !UI.dirty) renderNav(); }, 60000);
 })();
 </script>
