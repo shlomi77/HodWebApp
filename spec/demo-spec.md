@@ -1,4 +1,4 @@
-# Demo spec — סבב דיירים – הוד ירושלים
+# Demo spec — הוד קשר – הוד ירושלים
 
 *Version 1.0 (Nov 4, 2026). Build-ready spec for the demo in the public repo https://github.com/shlomi77/HodWebApp, hosted on GitHub Pages.*
 
@@ -61,7 +61,7 @@
 
 ## 3. Screens and navigation
 - **Top bar:**
-  - Logo, "סבב דיירים – הוד ירושלים", the demo banner, and the current user and role with a "החלף משתמש" (switch user) action.
+  - Logo, "הוד קשר – הוד ירושלים", the demo banner, and the current user and role with a "החלף משתמש" (switch user) action.
   - Global search: resident by name or apartment, opening the resident file.
 - **Main nav, right side:**
   1. **סבב** (rounds; the home screen)

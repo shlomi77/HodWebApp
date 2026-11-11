@@ -1,4 +1,4 @@
-# סבב דיירים – הוד ירושלים (demo)
+# הוד קשר – הוד ירושלים (demo)
 
 A clickable demo of a web app for Hod Yerushalayim's staff: the morning and evening resident rounds, the resident file, movements, shift handover, service calls, exceptional events and a light meds round. It replaces the daily workflows of the legacy desktop system, in Hebrew, right to left.
 

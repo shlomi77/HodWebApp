@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>סבב דיירים – הוד ירושלים (הדגמה)</title>
+<title>הוד קשר – הוד ירושלים (הדגמה)</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f6e74'/%3E%3C/svg%3E">
 <meta name="robots" content="noindex">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1211,7 +1211,7 @@ function renderMain() {
   keepFocus(() => {
     if (!allowedRoute()) { const h = homeRoute(); if (UI.route && UI.route !== h) toast('אין הרשאה למסך הזה בתפקיד הנוכחי'); history.replaceState(null, '', '#/' + h); parseHash(); }
     const V = VIEWS[UI.route]; $('#main').innerHTML = V ? V() : '';
-    const title = UI.route === 'resident' ? 'תיק דייר' : UI.route === 'home' ? 'ראשי' : UI.route === 'catalog' ? 'רשימת תרופות' : UI.route === 'cat' ? catOf(UI.params[0])?.name : NAV.find(n => n.id === UI.route)?.name; document.title = `${title} – סבב דיירים – הוד ירושלים (הדגמה)`;
+    const title = UI.route === 'resident' ? 'תיק דייר' : UI.route === 'home' ? 'ראשי' : UI.route === 'catalog' ? 'רשימת תרופות' : UI.route === 'cat' ? catOf(UI.params[0])?.name : NAV.find(n => n.id === UI.route)?.name; document.title = `${title} – הוד קשר – הוד ירושלים (הדגמה)`;
     applyWhenAll();
   });
 }
@@ -1313,7 +1313,7 @@ const futureDate = d => d && d > today();
 function viewShell() {
   const u = me();
   return `<header class="top">
-    <a class="brand" href="#/${homeRoute()}"><span class="logo">${ic('logo')}</span><b>סבב דיירים – הוד ירושלים</b></a>
+    <a class="brand" href="#/${homeRoute()}"><span class="logo">${ic('logo')}</span><b>הוד קשר – הוד ירושלים</b></a>
     <div class="gsearch" role="combobox" aria-expanded="false" aria-haspopup="listbox">
       ${ic('search')}<input id="gq" type="search" autocomplete="off" placeholder="חיפוש דייר לפי שם או דירה" aria-label="חיפוש דייר" data-in="gsearch"><kbd>/</kbd>
       <div class="gresults" id="gres" role="listbox" hidden></div>
@@ -1344,7 +1344,7 @@ function tick() { const c = $('#clock'); if (c) { const d = new Date(); c.textCo
 function viewLogin() {
   const sel = UI.loginUser;
   return `<div class="login">
-    <h1><span class="brand"><span class="logo">${ic('logo')}</span></span> סבב דיירים – הוד ירושלים</h1>
+    <h1><span class="brand"><span class="logo">${ic('logo')}</span></span> הוד קשר – הוד ירושלים</h1>
     <p class="muted" style="margin:0">בחרו משתמש והקלידו קוד. <b>הקוד של כל משתמשי ההדגמה הוא 1234.</b></p>
     ${UI.loggedOutIdle ? '<p class="note-inline" style="margin-top:12px">נותקת אחרי 15 דקות ללא פעילות. אפשר להיכנס שוב.</p>' : ''}
     <form data-submit="login" class="form" autocomplete="off">
