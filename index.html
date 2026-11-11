@@ -975,7 +975,7 @@ const uname = id => (id && id.startsWith('role:')) ? ROLES[id.slice(5)] : (byId(
 let _lastTouch = 0;
 function touch() { if (!SESSION) return; const n = Date.now(); if (n - _lastTouch > 5000) { _lastTouch = n; SESSION.last = n; saveSession(); } }
 function checkIdle() { if (SESSION && Date.now() - SESSION.last > IDLE_MS) { logout(true); } }
-function logout(idle) { SESSION = null; saveSession(); UI.loggedOutIdle = !!idle; UI.panel = null; UI.modal = null; renderModal(); UI.edit = null; UI.dirty = false; render(); }
+function logout(idle) { SESSION = null; saveSession(); UI.loggedOutIdle = !!idle; UI.deepLink = null; UI.panel = null; UI.modal = null; renderModal(); UI.edit = null; UI.dirty = false; render(); }
 
 /* ---------- permissions: one table, checked in the UI only (demo) ---------- */
 const ALL = Object.keys(ROLES);
@@ -1143,7 +1143,9 @@ function residentFromLabel(v) { v = String(v || '').trim(); if (!v) return null;
 function residentDatalist(id = 'dl-res', includeGone = false) { return `<datalist id="${id}">${S.residents.filter(r => includeGone || !isGone(r)).sort(sortApt).map(r => `<option value="${esc(residentLabel(r))}"></option>`).join('')}</datalist>`; }
 
 /* ---------- UI state, router, rendering ---------- */
-const UI = { route: 'round', params: [], query: {}, panel: null, f: {}, open: {}, confirm: null, edit: null, dirty: false, gq: '', gsel: 0, loginUser: null, loggedOutIdle: false };
+const UI = { route: 'round', params: [], query: {}, panel: null, f: {}, open: {}, confirm: null, edit: null, dirty: false, gq: '', gsel: 0, loginUser: null, loggedOutIdle: false, deepLink: null };
+// a non-round hash opened while logged out is kept as a deep link for the next login (11/11)
+const deepLinkOf = () => UI.route && UI.route !== 'round' ? location.hash : null;
 const NAV = [
   { id: 'round', name: 'סבב', icon: 'check', perm: 'rounds.run' }, { id: 'residents', name: 'דיירים', icon: 'users', perm: 'res.view' },
   { id: 'movements', name: 'תנועות', icon: 'move', perm: 'mov.view' }, { id: 'handover', name: 'מסירת משמרת', icon: 'note', perm: 'notes.view' },
@@ -3343,7 +3345,8 @@ const SUB = {
     const u = byId(S.users, UI.loginUser), pin = form.elements.pin.value.trim();
     if (!u) return showErrors(form, { user: 'בחרו משתמש' }); if (pin !== u.pin) return showErrors(form, { pin: 'קוד שגוי. בהדגמה הקוד הוא 1234.' });
     SESSION = { user_id: u.id, at: Date.now(), last: Date.now() }; saveSession(); UI.loginUser = null; UI.loggedOutIdle = false; UI.f = {};
-    parseHash(); if (!allowedRoute()) history.replaceState(null, '', '#/' + homeRoute()); parseHash(); UI.lastHash = location.hash; render(); toast(`שלום ${u.name}`);
+    if (UI.deepLink) { history.replaceState(null, '', UI.deepLink); parseHash(); if (!allowedRoute()) history.replaceState(null, '', '#/' + homeRoute()); } else history.replaceState(null, '', '#/' + homeRoute());
+    parseHash(); UI.deepLink = null; UI.lastHash = location.hash; render(); toast(`שלום ${u.name}`);
   },
   'file-save': form => {
     const r = res(UI.edit.rid), tab = UI.edit.tab;
@@ -3464,14 +3467,15 @@ window.addEventListener('hashchange', () => {
   const fc = fileCtx();
   if (UI.edit && !(['resident', 'cat'].includes(UI.route) && fc.rid === UI.edit.rid && (fc.tab || fileDefaultTab(fc)) === UI.edit.tab)) { const r = res(UI.edit.rid); if (r && r._new) { S.residents = S.residents.filter(x => x !== r); save(); } UI.edit = null; }
   UI.confirm = null; UI.dirtyWarn = false; UI.open = {}; if (UI.panel?.type === 'res') UI.panel = null;
-  if (!me()) return render(); renderNav(); renderMain(); renderPanel(); window.scrollTo(0, 0); $('#main')?.focus({ preventScroll: true });
+  if (!me()) { UI.deepLink = deepLinkOf(); return render(); } renderNav(); renderMain(); renderPanel(); window.scrollTo(0, 0); $('#main')?.focus({ preventScroll: true });
 });
 
 /* ---------- start ---------- */
 (function init() {
   try { const t = localStorage.getItem('hod_demo_theme'); if (t) document.documentElement.dataset.theme = t; } catch { }
   load(); loadSession(); parseHash();
-  if (!UI.route) { history.replaceState(null, '', '#/' + (me() ? homeRoute() : 'round')); parseHash(); }
+  if (me()) { if (!UI.route) { history.replaceState(null, '', '#/' + homeRoute()); parseHash(); } }
+  else UI.deepLink = UI.loggedOutIdle ? null : deepLinkOf();
   UI.lastHash = location.hash; render();
   setInterval(() => { tick(); checkIdle(); }, 15000);
   setInterval(() => { if (me() && !UI.dirty) renderNav(); }, 60000);
