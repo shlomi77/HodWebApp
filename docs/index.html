@@ -1014,7 +1014,7 @@ const uname = id => (id && id.startsWith('role:')) ? ROLES[id.slice(5)] : (byId(
 let _lastTouch = 0;
 function touch() { if (!SESSION) return; const n = Date.now(); if (n - _lastTouch > 5000) { _lastTouch = n; SESSION.last = n; saveSession(); } }
 function checkIdle() { if (SESSION && Date.now() - SESSION.last > IDLE_MS) { logout(true); } }
-function logout(idle) { SESSION = null; saveSession(); UI.loggedOutIdle = !!idle; UI.deepLink = null; UI.panel = null; UI.modal = null; renderModal(); UI.edit = null; UI.dirty = false; render(); }
+function logout(idle) { SESSION = null; saveSession(); UI.lastMark = null; $('#toast').hidden = true; UI.loggedOutIdle = !!idle; UI.deepLink = null; UI.panel = null; UI.modal = null; renderModal(); UI.edit = null; UI.dirty = false; render(); }
 
 /* ---------- permissions: one table, checked in the UI only (demo) ---------- */
 const ALL = Object.keys(ROLES);
@@ -1543,7 +1543,7 @@ function viewRound() {
   </div>
   ${UI.confirm === 'add-round' ? `<div class="confirm" style="margin-bottom:10px">להוסיף סבב ידני להיום: <button class="btn sm pri" data-act="add-round" data-shift="morning">סבב בוקר</button><button class="btn sm pri" data-act="add-round" data-shift="evening">סבב ערב</button><button class="btn sm" data-act="confirm-cancel">ביטול</button></div>` : ''}
   ${UI.confirm === closeKey ? `<div class="confirm" style="margin-bottom:10px">סגירה ידנית של הסבב${c.pending ? ` – עדיין <b>${c.pending}</b> לא אותרו, חובה לכתוב הערה` : ''}: <input id="close-note" type="text" placeholder="הערת סגירה" aria-label="הערת סגירה" style="min-width:260px"><button class="btn sm danger" data-act="close-round">סגור סבב</button><button class="btn sm" data-act="confirm-cancel">ביטול</button><span class="err" id="close-err"></span></div>` : ''}
-  ${rd.id !== cur.id ? `<div class="note-inline rother screen-only"><span>זה לא הסבב הנוכחי. הסבב הנוכחי: <b>${esc(roundName(cur))}</b></span><button class="btn sm pri" data-act="round-current">מעבר לסבב הנוכחי</button></div>` : ''}
+  ${rd.date !== cur.date || rd.shift !== cur.shift ? `<div class="note-inline rother screen-only"><span>זה לא הסבב הנוכחי. הסבב הנוכחי: <b>${esc(roundName(cur))}</b></span><button class="btn sm pri" data-act="round-current">מעבר לסבב הנוכחי</button></div>` : ''}
   ${rd.status === 'closed_manually' ? `<p class="note-inline">הסבב נסגר ידנית ע״י ${esc(uname(rd.closed_by))} ב-${fDT(rd.closed_at)}${rd.close_note ? ': ' + esc(rd.close_note) : ''}</p>` : ''}
   <div class="rtabs screen-only" role="tablist">${['pending', 'located', 'excluded'].map(s => `<button class="rtab" role="tab" data-s="${s}" aria-selected="${f.tab === s}" data-act="round-tab" data-tab="${s}">${tabsLbl[s]} <span class="c">${c[s]}</span></button>`).join('')}</div>
   <div class="filters screen-only">
@@ -3535,7 +3535,7 @@ document.addEventListener('keydown', ev => {
     if (ev.key === 'Escape') { ev.target.value = ''; box.hidden = true; ev.target.blur(); return; }
   }
   if (ev.key === 'Escape' && UI.modal) { closeModal(true); return; }
-  if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'ז' || ev.code === 'KeyZ') && UI.lastMark && !/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) { ev.preventDefault(); ACT['self-undo'](); return; }
+  if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'ז' || ev.code === 'KeyZ') && UI.lastMark && Date.now() <= UI.lastMark.until && !/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) { ev.preventDefault(); ACT['self-undo'](); return; }
   if (ev.key === 'Escape') { if (UI.confirm) { UI.confirm = null; renderMain(); renderPanel(); } else if (UI.open.visit || UI.open.ng || UI.open.undo || UI.open.adm || UI.open.ack || UI.open.prnfix) { UI.open.visit = UI.open.ng = UI.open.undo = UI.open.adm = UI.open.ack = UI.open.prnfix = null; renderMain(); } else if (UI.panel) closePanel(); return; }
   if (ev.key === '/' && !typing && me()) { ev.preventDefault(); $('#gq')?.focus(); return; }
   if (ev.altKey && /^[0-9]$/.test(ev.key) && me()) { const n = navShortcuts()[ev.key === '0' ? 9 : +ev.key - 1]; if (n) { ev.preventDefault(); go('#/' + n.id); } }
