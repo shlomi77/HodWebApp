@@ -1327,7 +1327,7 @@ function viewShell() {
 }
 function navBadge(id) {
   const u = me();
-  if (id === 'handover') { const c = unreadNotes().length; return c ? `<span class="badge" title="הערות שלא נקראו">${c}</span>` : ''; }
+  if (id === 'handover') { const c = unreadNotes().length; return c ? `<span class="badge" title="דיווחים שלא נקראו">${c}</span>` : ''; }
   if (id === 'round') { const rd = currentRound(false); if (!rd) return ''; const c = rd.entries.filter(e => e.status === 'pending').length; return rd.status === 'open' && c ? `<span class="badge soft">${c}</span>` : ''; }
   if (id === 'calls') { const c = S.service_calls.filter(x => callOverdue(x) && (u.role !== 'maintenance' || x.handler === u.id)).length; return c ? `<span class="badge" title="קריאות בחריגה מהיעד">${c}</span>` : ''; }
   if (id === 'movements') { const c = S.movements.filter(m => !m.end && m.expected_return && Date.parse(m.expected_return) < Date.now()).length; return c ? `<span class="badge" title="באיחור בחזרה">${c}</span>` : ''; }
@@ -1559,14 +1559,14 @@ function panelResident(p) {
     <div class="actions">${may('mov.create') && !m && !isGone(r) ? `<button class="btn sm" data-act="new-move" data-rid="${r.id}">פתח תנועה</button>` : ''}${may('calls.create') ? `<button class="btn sm" data-act="new-call" data-rid="${r.id}">פתח קריאת שירות</button>` : ''}<button class="btn sm" data-act="new-event" data-rid="${r.id}">דווח אירוע חריג</button></div>
     ${m ? `<div class="p-sec"><h3>תנועה פתוחה</h3><div class="card pad"><b>${esc(MT[m.type].name)}</b>${m.hospital ? ' – ' + esc(m.hospital) : m.destination ? ' – ' + esc(m.destination) : ''}<br><span class="muted">מאז ${fDT(m.start)}${m.expected_return ? ` · חזרה צפויה ${fDT(m.expected_return)}` : ''}</span>${may('mov.create') ? `<div style="margin-top:8px"><button class="btn sm ok" data-act="move-return" data-id="${m.id}">חזר/ה (${esc(MT[m.type].closer)})</button></div>` : ''}</div></div>` : ''}
     <div class="p-sec"><h3>אנשי קשר <a href="#/resident/${r.id}/contacts">לכל אנשי הקשר</a></h3>${r.contacts.length ? r.contacts.map(c => `<div class="actions" style="justify-content:space-between;border-top:1px dashed var(--line);padding:4px 0"><span><b>${esc(c.name)}</b> <span class="muted">${esc(c.relation)}${c.guardian ? ' · אפוטרופוס' : ''}${c.is_proxy ? ' · מיופה כוח' : ''}${c.notify_first ? ' · איש קשר ראשי' : ''}</span></span><a class="num" href="tel:${esc(c.phone.replace(/-/g, ''))}">${esc(c.phone)}</a></div>`).join('') : '<span class="muted">אין אנשי קשר</span>'}</div>
-    <div class="p-sec"><h3>הערות אחרונות <a href="#/resident/${r.id}/notes">לכל ההערות</a></h3>${notes.length ? notes.map(n => `<div class="card pad" style="margin-bottom:6px"><small class="muted">${fDT(n.at)} · ${esc(uname(n.by))} · ${esc(n.subject)}</small><div>${esc(n.text)}</div></div>`).join('') : '<span class="muted">אין הערות</span>'}</div>
+    <div class="p-sec"><h3>דיווחי משמרת אחרונים <a href="#/resident/${r.id}/notes">לכל הדיווחים</a></h3>${notes.length ? notes.map(n => `<div class="card pad" style="margin-bottom:6px"><small class="muted">${fDT(n.at)} · ${esc(uname(n.by))} · ${esc(n.subject)}</small><div>${esc(n.text)}</div></div>`).join('') : '<span class="muted">אין דיווחי משמרת</span>'}</div>
     <div class="p-sec"><h3>קישורים לתיק</h3><div class="actions">${fileTabs(r).map(t => `<a class="btn sm ghost" href="#/resident/${r.id}/${t.id}">${t.name}</a>`).join('')}</div></div>
   </div>`;
 }
 
 function fileTabs(r) {
   return [{ id: 'personal', name: 'פרטים אישיים' }, { id: 'contacts', name: 'אנשי קשר' }, { id: 'contactlog', name: 'יומן קשר', perm: 'contactlog.view' }, { id: 'movements', name: 'תנועות', perm: 'mov.view' },
-    { id: 'social', name: 'תיק סוציאלי', perm: 'social.view' }, { id: 'benefits', name: 'קצבאות', perm: 'social.view' }, { id: 'notes', name: 'הערות / קשר מחלקתי' },
+    { id: 'social', name: 'תיק סוציאלי', perm: 'social.view' }, { id: 'benefits', name: 'קצבאות', perm: 'social.view' }, { id: 'notes', name: 'דיווחי משמרת / קשר מחלקתי' },
     { id: 'events', name: 'אירועים' }, { id: 'nursing', name: 'סיעוד ותרופות', perm: 'clinical.view' }].filter(t => !t.perm || may(t.perm));
 }
 // a resident file opened inside a category shows only that category's sections
@@ -1795,7 +1795,7 @@ function saveContactLog(form) {
 }
 function tabResNotes(r) {
   const list = S.handover_notes.filter(n => n.resident_id === r.id).sort((a, b) => b.at.localeCompare(a.at));
-  return `${may('notes.write') ? `<div class="actions" style="margin-bottom:10px"><button class="btn pri" data-act="new-note" data-rid="${r.id}">${ic('plus')} הערה חדשה על ${esc(r.first_name)}</button></div>` : ''}<div class="feed">${list.map(noteCard).join('') || empty('אין הערות על הדייר', '')}</div>`;
+  return `${may('notes.write') ? `<div class="actions" style="margin-bottom:10px"><button class="btn pri" data-act="new-note" data-rid="${r.id}">${ic('plus')} דיווח למשמרת על ${esc(r.first_name)}</button></div>` : ''}<div class="feed">${list.map(noteCard).join('') || empty('אין דיווחי משמרת על הדייר', '')}</div>`;
 }
 function tabResEvents(r) {
   const list = visibleEvents().filter(e => e.resident_ids.includes(r.id)).sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
@@ -1923,7 +1923,7 @@ function noteCard(n) {
       ${n.unit_id ? `<span>${esc(byId(S.units, n.unit_id)?.label || '')}</span>` : ''}${r ? `<button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))} · ${esc(r.apartment)}</button>` : ''}
       ${n.needs_action ? (n.status === 'done' ? `<span class="chip ok">טופל ע״י ${esc(uname(n.done_by))} ${fT(n.done_at)}</span>` : `<span class="chip warn">דורש טיפול${n.assignee ? ' · ' + esc(assigneeLabel(n.assignee)) : ''}</span>`) : ''}
       ${unread ? '<span class="chip acc">חדש</span>' : ''}</div>
-    ${orig ? `<div class="hint">תיקון להערה מ-${fT(orig.at)}: "${esc(orig.text.slice(0, 60))}${orig.text.length > 60 ? '…' : ''}"</div>` : ''}
+    ${orig ? `<div class="hint">תיקון לדיווח מ-${fT(orig.at)}: "${esc(orig.text.slice(0, 60))}${orig.text.length > 60 ? '…' : ''}"</div>` : ''}
     <div class="txt">${esc(n.text)}</div>
     <div class="foot-l">
       ${unread ? `<button class="btn sm pri" data-act="note-read" data-id="${n.id}">קראתי</button>` : ''}
@@ -1947,7 +1947,7 @@ function shiftSummary(date, shift) {
       <div class="stat"><b>${mvO.length} / ${mvC.length}</b><span>תנועות נפתחו / נסגרו</span></div>
       <div class="stat"><b>${calls.length}</b><span>קריאות שירות חדשות</span></div>
       <div class="stat${evs.length ? ' red' : ''}"><b>${evs.length}</b><span>אירועים חריגים</span></div>
-      <div class="stat${act.filter(n => n.status === 'open').length ? ' red' : ''}"><b>${act.filter(n => n.status === 'open').length}</b><span>הערות "דורש טיפול" פתוחות</span></div>
+      <div class="stat${act.filter(n => n.status === 'open').length ? ' red' : ''}"><b>${act.filter(n => n.status === 'open').length}</b><span>דיווחים "דורש טיפול" פתוחים</span></div>
     </div>
     ${mvO.length || mvC.length ? `<p class="hint" style="margin:8px 0 0">${[...mvO.map(m => `${MT[m.type].name}: ${fullName(res(m.resident_id))}`), ...mvC.map(m => `${m.closed_type}: ${fullName(res(m.resident_id))}`)].map(esc).join(' · ')}</p>` : ''}
     ${act.filter(n => n.status === 'open').length ? `<ul class="hist print-only">${act.filter(n => n.status === 'open').map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>` : ''}
@@ -1993,7 +1993,7 @@ function viewHandover() {
   const list = S.handover_notes.filter(n => n.shift_date === f.date && n.shift === f.shift && (!f.unit || n.unit_id === f.unit) && (!f.rid || n.resident_id === f.rid) && (!f.action || n.needs_action) && (!f.unread || !isRead(n))).sort((a, b) => b.at.localeCompare(a.at));
   const openAct = S.handover_notes.filter(n => n.needs_action && n.status === 'open' && !(n.shift_date === f.date && n.shift === f.shift));
   const unread = unreadNotes();
-  return `<div class="ph"><h1>מסירת משמרת</h1>${unread.length ? `<span class="chip acc">${unread.length} לא נקראו</span><button class="btn sm" data-act="note-read-all">סמן הכל כנקרא</button>` : ''}<span class="sp"></span>${may('notes.write') ? `<button class="btn pri" data-act="new-note">${ic('plus')} הערה חדשה</button>` : ''}</div>
+  return `<div class="ph"><h1>מסירת משמרת</h1>${unread.length ? `<span class="chip acc">${unread.length} לא נקראו</span><button class="btn sm" data-act="note-read-all">סמן הכל כנקרא</button>` : ''}<span class="sp"></span>${may('notes.write') ? `<button class="btn pri" data-act="new-note">${ic('plus')} דיווח חדש למשמרת</button>` : ''}</div>
   <div class="filters">
     <div class="seg"><button data-act="ho-day" data-d="-1" aria-label="יום קודם">${ic('chevR')}</button><button aria-pressed="false" data-act="ho-today">${dow(f.date)} ${fD(f.date)}</button><button data-act="ho-day" data-d="1" aria-label="יום הבא">${ic('chevL')}</button></div>
     <div class="seg" role="group" aria-label="משמרת">${Object.entries(SHIFT).map(([k, v]) => `<button data-act="ho-shift" data-v="${k}" aria-pressed="${f.shift === k}">${v}</button>`).join('')}</div>
@@ -2004,15 +2004,15 @@ function viewHandover() {
   </div>
   <div class="summary-wrap">${shiftSummary(f.date, f.shift)}</div>
   ${may('meds.view') ? ccBlock() : ''}
-  <div class="feed">${list.map(noteCard).join('') || empty('אין הערות במשמרת הזו', may('notes.write') ? 'לחצו "הערה חדשה" כדי להשאיר הערה למשמרת הבאה.' : '')}</div>
+  <div class="feed">${list.map(noteCard).join('') || empty('אין דיווחים במשמרת הזו', may('notes.write') ? 'לחצו "דיווח חדש למשמרת" כדי להשאיר דיווח למשמרת הבאה.' : '')}</div>
   ${openAct.length ? `<h2 style="font-size:18px;margin:20px 0 8px">עדיין דורש טיפול ממשמרות קודמות</h2><div class="feed">${openAct.sort((a, b) => b.at.localeCompare(a.at)).map(noteCard).join('')}</div>` : ''}`;
 }
 function panelNote(p) {
   const n = p.id && byId(S.handover_notes, p.id), corr = p.correct && byId(S.handover_notes, p.correct), base = n || corr || {};
   const r = (p.rid && res(p.rid)) || (base.resident_id && res(base.resident_id)), ws = workShiftAt();
-  return `<div class="p-h"><div><h2>${n ? 'עריכת הערה' : corr ? 'תיקון להערה' : 'הערה חדשה למשמרת'}</h2><div class="meta">משמרת ${SHIFT[n ? n.shift : ws.shift]} · ${fD(n ? n.shift_date : ws.date)} (נקבע אוטומטית)</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
+  return `<div class="p-h"><div><h2>${n ? 'עריכת דיווח' : corr ? 'תיקון לדיווח' : 'דיווח חדש למשמרת'}</h2><div class="meta">משמרת ${SHIFT[n ? n.shift : ws.shift]} · ${fD(n ? n.shift_date : ws.date)} (נקבע אוטומטית)</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
   <div class="p-b"><form class="form" data-submit="note" data-id="${n ? n.id : ''}" data-correct="${corr ? corr.id : ''}" autocomplete="off">
-    ${corr ? `<p class="hint">הערה מקורית (${fT(corr.at)}): ${esc(corr.text)}</p>` : ''}
+    ${corr ? `<p class="hint">דיווח מקורי (${fT(corr.at)}): ${esc(corr.text)}</p>` : ''}
     ${fld('טקסט', `<textarea name="text" autofocus rows="4">${esc(n ? n.text : '')}</textarea>`, 'text', 1)}
     ${fld('דייר/ת (רשות)', `<input name="resident" type="text" list="dl-res2" value="${r ? esc(residentLabel(r)) : ''}" placeholder="הקלידו שם או דירה">${residentDatalist('dl-res2')}`, 'resident')}
     <div class="frow">${fld('יחידה', `<select name="unit_id">${opt('', 'כללי – כל הבית', base.unit_id || (r ? r.unit_id : ''))}${S.units.map(u => opt(u.id, u.label, base.unit_id || (r ? r.unit_id : ''))).join('')}</select>`, 'unit_id')}
@@ -2024,12 +2024,12 @@ function panelNote(p) {
 }
 function saveNote(form) {
   const d = readForm(form), e = {}; const r = d.resident ? residentFromLabel(d.resident) : null;
-  if (!d.text || d.text.length < 2) e.text = 'כתבו את תוכן ההערה'; if (d.resident && !r) e.resident = 'בחרו דייר/ת מהרשימה או השאירו ריק';
+  if (!d.text || d.text.length < 2) e.text = 'כתבו את תוכן הדיווח'; if (d.resident && !r) e.resident = 'בחרו דייר/ת מהרשימה או השאירו ריק';
   if (!showErrors(form, e)) return;
   const id = form.dataset.id, ws = workShiftAt();
   if (id) { const n = byId(S.handover_notes, id); if (Date.now() - Date.parse(n.at) > 15 * 60000) { toast('עברו 15 דקות – אפשר רק לכתוב תיקון'); return; } Object.assign(n, { text: d.text, resident_id: r?.id || null, unit_id: d.unit_id || null, subject: d.subject, needs_action: !!d.needs_action, assignee: d.needs_action ? d.assignee || null : null }); stamp(n); }
   else S.handover_notes.push(stamp({ id: uid('N'), at: nowIso(), shift: ws.shift, shift_date: ws.date, unit_id: d.unit_id || null, resident_id: r?.id || null, subject: d.subject, text: d.text, needs_action: !!d.needs_action, assignee: d.needs_action ? d.assignee || null : null, status: 'open', done_by: null, done_at: null, read_by: [], correction_of: form.dataset.correct || null, by: me().id }, true));
-  closePanel(); refresh(); toast('ההערה נשמרה');
+  closePanel(); refresh(); toast('הדיווח נשמר');
 }
 
 /* ================================================================
@@ -3183,7 +3183,7 @@ const ACT = {
   'new-contactlog': el => { if (!may('contactlog.write')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); openPanel({ type: 'contactlog', rid: el.dataset.rid }); },
   'edit-contactlog': el => { const x = byId(S.contact_log, el.dataset.id); if (!x || !clMayEdit(x)) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי'); openPanel({ type: 'contactlog', id: x.id }); },
   'note-read': el => { const n = byId(S.handover_notes, el.dataset.id); if (!isRead(n)) n.read_by.push({ user: me().id, at: nowIso() }); refresh(); },
-  'note-read-all': () => { for (const n of unreadNotes()) n.read_by.push({ user: me().id, at: nowIso() }); refresh(); toast('כל ההערות סומנו כנקראו'); },
+  'note-read-all': () => { for (const n of unreadNotes()) n.read_by.push({ user: me().id, at: nowIso() }); refresh(); toast('כל הדיווחים סומנו כנקראו'); },
   'note-done': el => { const n = byId(S.handover_notes, el.dataset.id); Object.assign(n, { status: 'done', done_by: me().id, done_at: nowIso() }); if (!isRead(n)) n.read_by.push({ user: me().id, at: nowIso() }); stamp(n); refresh(); toast('סומן כטופל'); },
   'note-edit': el => openPanel({ type: 'note', id: el.dataset.id }),
   'note-correct': el => openPanel({ type: 'note', correct: el.dataset.id }),
