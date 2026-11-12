@@ -1647,6 +1647,7 @@ function viewResidentFile() {
         ${may('calls.create') ? `<button class="btn" data-act="new-call" data-rid="${r.id}">פתח קריאת שירות</button>` : ''}
         <button class="btn" data-act="new-event" data-rid="${r.id}">דווח אירוע חריג</button>
         ${may('mov.create') && !m && !isGone(r) ? `<button class="btn" data-act="new-move" data-rid="${r.id}">פתח תנועה</button>` : ''}
+        ${may('mov.create') && m ? `<button class="btn pri" data-act="move-return" data-id="${m.id}">${ic('move')} ${esc(MT[m.type].closer)}</button>` : ''}
       </div>
     </div>
     <nav class="ftabs" aria-label="לשוניות תיק">${tabs.map(t => `<a href="${fileHref(ctx, r.id, t.id)}" ${t.id === tab ? 'aria-current="page"' : ''}>${t.name}</a>`).join('')}</nav>
@@ -1888,14 +1889,14 @@ function saveAdmissionDate(id) {
 function movementTable(list, withRes = true, fileRes = null) {
   if (!list.length) return empty('אין תנועות להצגה', '');
   return `<div class="tbl"><table><thead><tr>${withRes ? '<th>דייר</th><th>דירה</th>' : ''}<th>סוג</th><th>יעד</th><th>התחלה</th><th>חזרה צפויה</th><th>סיום</th><th>נרשם ע״י</th><th></th></tr></thead><tbody>
-  ${list.map(m => { const r = res(m.resident_id), over = !m.end && m.expected_return && Date.parse(m.expected_return) < Date.now(), closable = !m.end && MT[m.type].closer && may('mov.create');
+  ${list.map(m => { const r = res(m.resident_id), over = !m.end && m.expected_return && Date.parse(m.expected_return) < Date.now(), closable = !m.end && MT[m.type].closer && may('mov.create'), editBtn = may('mov.create') ? `<button class="btn sm" data-act="move-edit" data-id="${m.id}">עריכה</button>` : '', corrected = (m.history || []).some(x => x.kind === 'correction') ? ' <span class="chip">תוקן</span>' : '';
     if (m.type === 'admission') return `<tr>${withRes ? `<td><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))}</button></td><td class="n">${esc(r.apartment)}</td>` : ''}
-    <td><span class="chip ok">כניסה לדיור</span></td><td>${esc(m.note || '—')}</td><td class="n">${fD(m.start)}</td><td class="n">—</td><td class="n">—</td><td>${esc(uname(m.by))}</td><td>${admissionEditCell(m, fileRes)}</td></tr>`;
+    <td><span class="chip ok">כניסה לדיור</span>${corrected}</td><td>${esc(m.note || '—')}${moveHistory(m)}</td><td class="n">${fD(m.start)}</td><td class="n">—</td><td class="n">—</td><td>${esc(uname(m.by))}</td><td>${admissionEditCell(m, fileRes)}${editBtn}</td></tr>`;
     return `<tr class="${over ? 'overdue' : ''}">${withRes ? `<td><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))}</button></td><td class="n">${esc(r.apartment)}</td>` : ''}
-    <td><span class="chip ${m.opens_state === 'hospital' ? 'red' : ['left', 'deceased'].includes(m.opens_state) ? '' : 'vio'}">${esc(MT[m.type].name)}</span></td><td>${esc(m.hospital || m.destination || '—')}${m.note ? `<br><small class="muted">${esc(m.note)}</small>` : ''}</td>
+    <td><span class="chip ${m.opens_state === 'hospital' ? 'red' : ['left', 'deceased'].includes(m.opens_state) ? '' : 'vio'}">${esc(MT[m.type].name)}</span>${corrected}</td><td>${esc(m.hospital || m.destination || '—')}${m.note ? `<br><small class="muted">${esc(m.note)}</small>` : ''}${moveHistory(m)}</td>
     <td class="n">${fDT(m.start)}</td><td class="n">${m.expected_return ? fDT(m.expected_return) + (over ? ' <b style="color:var(--danger)">באיחור</b>' : '') : '—'}</td>
     <td class="n">${m.end ? `${fDT(m.end)}${m.closed_type ? `<br><small class="muted">${esc(m.closed_type)}</small>` : ''}` : '<span class="chip warn">פתוחה</span>'}</td><td>${esc(uname(m.by))}</td>
-    <td>${closable ? `<button class="btn sm ok" data-act="move-return" data-id="${m.id}">חזר/ה</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div>`;
+    <td>${closable ? `<button class="btn sm ok" data-act="move-return" data-id="${m.id}">חזר/ה</button> ` : ''}${editBtn}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 function viewMovements() {
   const f = F('movements', { type: '', from: '', to: '', open: false, q: '' });
@@ -1955,12 +1956,88 @@ function saveMove(form) {
   if (['hospital', 'vacation'].includes(t.opens_state)) r.status = t.opens_state; if (gone) r.status = t.opens_state; stamp(r);
   syncRounds(r.id); closePanel(); refresh(); toast(`נרשמה ${t.name} ל${fullName(r)}${gone || isAdm ? '' : ' – הוצא/ה מהסבב הפתוח'}`);
 }
-function returnMove(id) {
-  const m = byId(S.movements, id); if (!m || m.end) return; const r = res(m.resident_id), t = nowIso();
-  if (Date.parse(t) < Date.parse(m.start)) { toast('זמן החזרה לפני תחילת התנועה'); return; }
-  Object.assign(m, { end: t, closed_type: MT[m.type].closer, closed_by: me().id }); stamp(m);
+function closeMove(m, endIso, note) { // only called from saveMoveReturn
+  const r = res(m.resident_id);
+  if (note !== undefined && note !== (m.note || '')) { m.history = [...(m.history || []), { at: nowIso(), by: me().id, kind: 'return', prev: { note: m.note || '' } }]; m.note = note; }
+  Object.assign(m, { end: endIso, closed_type: MT[m.type].closer, closed_by: me().id }); stamp(m);
   if (['hospital', 'vacation'].includes(m.opens_state)) r.status = 'active'; stamp(r);
   syncRounds(r.id); refresh(); toast(`${fullName(r)} ${g(r, 'חזר', 'חזרה')} – ${MT[m.type].closer}. ${g(r, 'הוחזר', 'הוחזרה')} לסבב.`);
+}
+const moveWhere = m => m.hospital ? ' – ' + m.hospital : m.destination ? ' – ' + m.destination : '';
+function panelMoveReturn(p) {
+  const m = byId(S.movements, p.id), r = m && res(m.resident_id); if (!m || m.end || !MT[m.type].closer || !r || !may('mov.create')) return null;
+  return `<div class="p-h"><div><h2>${esc(MT[m.type].closer)}</h2><div class="meta">${esc(fullName(r))} · ${esc(MT[m.type].name)}${esc(moveWhere(m))} · מ־${fDT(m.start)}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
+  <div class="p-b"><form class="form" data-submit="moveret" data-id="${m.id}" autocomplete="off">
+    ${fld('מועד החזרה', dtIn('end', isoToWall(nowIso())), 'end', 1)}
+    ${fld('הערה', `<textarea name="note">${esc(m.note || '')}</textarea>`, 'note')}
+    <div class="actions"><button class="btn pri">${esc(MT[m.type].closer)}</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
+}
+function saveMoveReturn(form) {
+  const m = byId(S.movements, form.dataset.id); if (!may('mov.create')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
+  if (!m || m.end) { toast('התנועה כבר נסגרה'); closePanel(); refresh(); return; }
+  const d = readForm(form), e = {};
+  if (!d.end) e.end = 'שדה חובה';
+  else { const t = Date.parse(wallToIso(d.end)); if (t < Date.parse(m.start)) e.end = 'זמן החזרה לפני תחילת התנועה'; else if (t > Date.now() + 2 * 36e5) e.end = 'זמן החזרה לא יכול להיות יותר משעתיים קדימה'; }
+  if (!showErrors(form, e)) return;
+  closePanel(); closeMove(m, wallToIso(d.end), d.note);
+}
+/* movement corrections: in-place edit plus append-only history[] (previous values of the changed fields) */
+const MOVE_FIELD_LABEL = { hospital: 'בית חולים', destination: 'יעד', start: 'התחלה', expected_return: 'חזרה צפויה', end: 'סיום', note: 'הערה' };
+const MOVE_DATE_KEYS = ['start', 'expected_return', 'end'];
+function moveEditKeys(m) {
+  const t = m.type; if (t === 'admission') return ['note']; if (t === 'deceased') return ['start', 'note']; if (t === 'left') return ['start', 'destination', 'note'];
+  return [t === 'hospital' ? 'hospital' : 'destination', 'start', 'expected_return', ...(m.end ? ['end'] : []), 'note'];
+}
+function panelMoveEdit(p) {
+  const m = byId(S.movements, p.id), r = m && res(m.resident_id); if (!m || !r || !may('mov.create')) return null;
+  const k = moveEditKeys(m), has = x => k.includes(x);
+  return `<div class="p-h"><div><h2>תיקון תנועה</h2><div class="meta">${esc(fullName(r))} · ${esc(MT[m.type].name)}${esc(moveWhere(m))} · ${fDT(m.start)}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
+  <div class="p-b"><form class="form" data-submit="moveedit" data-id="${m.id}" autocomplete="off">
+    ${has('hospital') ? fld('בית חולים', `<select name="hospital">${opt('', 'בחרו…', m.hospital)}${[...new Set([...HOSPITALS, m.hospital].filter(Boolean))].map(h => opt(h, h, m.hospital)).join('')}</select>`, 'hospital', 1) : ''}
+    ${has('destination') ? fld('יעד / מחלקה', `<input name="destination" type="text" value="${esc(m.destination || '')}">`, 'destination') : ''}
+    ${has('start') ? fld('התחלה – תאריך ושעה', dtIn('start', isoToWall(m.start)), 'start', 1) : ''}
+    ${has('expected_return') ? fld('חזרה צפויה', dtIn('expected_return', isoToWall(m.expected_return)), 'expected_return') : ''}
+    ${has('end') ? fld('סיום – תאריך ושעה', dtIn('end', isoToWall(m.end)), 'end', 1) : ''}
+    ${fld('הערה', `<textarea name="note">${esc(m.note || '')}</textarea>`, 'note')}
+    ${fld('סיבת התיקון', '<textarea name="reason"></textarea>', 'reason', 1, 'הגרסה הקודמת נשמרת בהיסטוריה של התנועה.')}
+    <div class="actions"><button class="btn pri">שמירת תיקון</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
+}
+function saveMoveEdit(form) {
+  const m = byId(S.movements, form.dataset.id), r = m && res(m.resident_id); if (!m || !r) return;
+  if (!may('mov.create')) return toast('אין הרשאה לפעולה הזו בתפקיד הנוכחי');
+  const d = readForm(form), e = {}, keys = moveEditKeys(m), now = Date.now(), tm = w => Date.parse(wallToIso(w));
+  if (!d.reason || d.reason.length < 2) e.reason = 'כתבו את סיבת התיקון';
+  const nv = {}; for (const kk of keys) nv[kk] = MOVE_DATE_KEYS.includes(kk) ? (d[kk] || '') : (d[kk] ?? '');
+  const sameDt = kk => isoToWall(m[kk]) === nv[kk];
+  if (keys.includes('start')) {
+    if (!nv.start) e.start = 'שדה חובה'; else if (tm(nv.start) > now + 36e5 * 24 * 30) e.start = 'תאריך רחוק מדי בעתיד';
+    else { const adm = admissionOf(r); if (adm && m.type !== 'admission' && tm(nv.start) < Date.parse(adm.start)) e.start = `התנועה לא יכולה להיות לפני הכניסה לדיור (${fD(adm.start)})`; }
+  }
+  if (keys.includes('hospital') && !nv.hospital) e.hospital = 'באשפוז חובה לבחור בית חולים';
+  const startW = keys.includes('start') ? nv.start : isoToWall(m.start);
+  if (keys.includes('expected_return') && nv.expected_return && startW && nv.expected_return < startW) e.expected_return = 'החזרה לא יכולה להיות לפני ההתחלה';
+  if (keys.includes('end')) {
+    if (!nv.end) e.end = 'שדה חובה'; else if (startW && nv.end < startW) e.end = 'הסיום לא יכול להיות לפני ההתחלה'; else if (tm(nv.end) > now + 2 * 36e5) e.end = 'זמן החזרה לא יכול להיות יותר משעתיים קדימה';
+  }
+  if (!e.start && !e.end && ['hospital', 'vacation', 'away'].includes(m.type) && startW) {
+    const s0 = tm(startW), e0 = keys.includes('end') ? tm(nv.end) : m.end ? Date.parse(m.end) : Infinity;
+    if (S.movements.some(o => o.id !== m.id && o.resident_id === r.id && ['hospital', 'vacation', 'away'].includes(o.opens_state) && s0 < (o.end ? Date.parse(o.end) : Infinity) && Date.parse(o.start) < e0)) e.start = 'חופף לתנועה אחרת של הדייר/ת';
+  }
+  const prev = {}, next = {};
+  for (const kk of keys) {
+    if (MOVE_DATE_KEYS.includes(kk)) { if (!sameDt(kk)) { prev[kk] = m[kk] || ''; next[kk] = nv[kk] ? wallToIso(nv[kk]) : ''; } }
+    else if ((m[kk] || '') !== nv[kk]) { prev[kk] = m[kk] || ''; next[kk] = nv[kk]; }
+  }
+  if (!Object.keys(e).length && !Object.keys(prev).length) e.reason = 'לא בוצע שינוי';
+  if (!showErrors(form, e)) return;
+  m.history = [...(m.history || []), { at: nowIso(), by: me().id, kind: 'correction', reason: d.reason, prev }];
+  Object.assign(m, next); if (['left', 'deceased'].includes(m.type) && next.start) m.end = next.start;
+  stamp(m); closePanel(); refresh(); toast('התנועה תוקנה – הגרסה הקודמת נשמרה');
+}
+const moveHistVal = (k, v) => MOVE_DATE_KEYS.includes(k) ? (v ? fDT(v) : '—') : (v || '—');
+function moveHistory(m) {
+  const h = m.history || []; if (!h.length) return '';
+  return `<details><summary class="hint">גרסאות קודמות (${h.length})</summary><ul class="hist">${h.map(x => `<li><small>${fDT(x.at)} · ${esc(uname(x.by))} · ${x.kind === 'return' ? 'בעת החזרה' : 'תיקון'}${x.reason ? ` · סיבה: ${esc(x.reason)}` : ''}</small><div>${Object.entries(x.prev || {}).map(([k, v]) => `${esc(MOVE_FIELD_LABEL[k] || k)}: <span class="num">${esc(moveHistVal(k, v))}</span>`).join(' · ')}</div></li>`).join('')}</ul></details>`;
 }
 
 /* ================================================================
@@ -2606,7 +2683,7 @@ const itemsTxt = (x, items) => items.filter(it => x[it.k] !== '' && x[it.k] != n
 const MED_SECTIONS = {
   personal: { name: 'פרטים אישיים', icon: 'user', render: (r, ed) => tabPersonal(r, ed), actions: (r, ed) => fileEditActions('personal', ed) },
   contacts: { name: 'אנשי קשר', icon: 'phone', render: (r, ed) => tabContacts(r, ed), actions: (r, ed) => fileEditActions('contacts', ed) },
-  movements: { name: 'תנועות מטופל', icon: 'move', render: r => tabResMovements(r), actions: r => may('mov.create') && !openMove(r.id) && !isGone(r) ? `<button class="btn pri" data-act="new-move" data-rid="${r.id}">${ic('plus')} פתח תנועה</button>` : '' },
+  movements: { name: 'תנועות מטופל', icon: 'move', render: r => tabResMovements(r), actions: r => { const m = openMove(r.id); return may('mov.create') && m ? `<button class="btn pri" data-act="move-return" data-id="${m.id}">${ic('move')} ${esc(MT[m.type].closer)}</button>` : may('mov.create') && !isGone(r) ? `<button class="btn pri" data-act="new-move" data-rid="${r.id}">${ic('plus')} פתח תנועה</button>` : ''; } },
   followup: { name: 'מעקב טיפול', icon: 'check', coll: 'followup', prefix: 'FU', write: 'clinical.edit', lock: true,
     fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'discipline', label: 'תחום', type: 'select', opts: DISCIPLINES, req: 1 }, { k: 'goal', label: 'מטרה', type: 'text', req: 1 },
       { k: 'action', label: 'פעולה שבוצעה', type: 'textarea', req: 1 }, { k: 'status', label: 'סטטוס', type: 'select', opts: FU_STATUS, req: 1 }],
@@ -2747,6 +2824,11 @@ function recSum(sec, x) {
 function auditRows(r) {
   const rows = [], add = (at, by, action, type, summary, sec) => at && rows.push({ at, by, action, type, summary, sec });
   const adm = admissionOf(r); if (adm) add(adm.created_at || adm.start, adm.by, 'נוצר', 'קבלה לדיור', `כניסה לדיור ${fD(adm.start)}`, 'movements');
+  for (const m of S.movements.filter(x => x.resident_id === r.id && x.type !== 'admission')) {
+    add(m.created_at || m.start, m.by, 'נוצר', 'תנועה', `${MT[m.type].name}${moveWhere(m)} · ${fDT(m.start)}`, 'movements');
+    if (m.end && MT[m.type].closer) add(m.end, m.closed_by, 'נסגר', 'תנועה', `${m.closed_type || MT[m.type].closer} · ${fDT(m.end)}`, 'movements');
+    for (const h of (m.history || []).filter(x => x.kind === 'correction')) add(h.at, h.by, 'תוקן', 'תנועה', `סיבה: ${auditClip(h.reason, 60)} · שונו: ${Object.keys(h.prev || {}).map(k => MOVE_FIELD_LABEL[k] || k).join(', ')}`, 'movements');
+  }
   for (const [sec, def] of Object.entries(MED_SECTIONS)) { if (!def.coll) continue;
     for (const x of clinOf(def.coll, r.id)) {
       add(x.created_at, x.by || x.created_by, x.correction_of ? 'תוקן' : 'נוצר', def.name, x.correction_of ? `תיקון של ${x.correction_of} · סיבה: ${auditClip(x.correction_reason, 60)} · ${recSum(sec, x)}` : recSum(sec, x), sec);
@@ -3164,7 +3246,7 @@ function saveProspectFu(form) {
 }
 
 const VIEWS = { prospects: () => viewProspects(false), catalog: viewCatalog, home: viewHome, cat: viewCat, round: viewRound, residents: viewResidents, resident: viewResidentFile, movements: viewMovements, handover: viewHandover, calls: viewCalls, events: viewEvents, meds: viewMeds, reports: viewReports, settings: viewSettings };
-const PANELS = { prngive: panelPrnGive, medorder: panelMedOrder, medhandling: panelMedHandling, intake: panelIntake, medrec: panelMedrec, vitalfix: panelVitalfix, prospect: panelProspect, contactlog: panelContactLog, res: panelResident, move: panelMove, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
+const PANELS = { prngive: panelPrnGive, medorder: panelMedOrder, medhandling: panelMedHandling, intake: panelIntake, medrec: panelMedrec, vitalfix: panelVitalfix, prospect: panelProspect, contactlog: panelContactLog, res: panelResident, move: panelMove, moveret: panelMoveReturn, moveedit: panelMoveEdit, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
 
 /* ================================================================
    Event wiring: clicks, inputs, changes, submits, keyboard, routing
@@ -3258,7 +3340,8 @@ const ACT = {
   'contact-del': el => { el.closest('[data-crow]').remove(); UI.dirty = true; },
   // movements
   'new-move': el => openPanel({ type: 'move', rid: el.dataset.rid }),
-  'move-return': el => returnMove(el.dataset.id),
+  'move-return': el => { if (!may('mov.create')) return; openPanel({ type: 'moveret', id: el.dataset.id }); },
+  'move-edit': el => { if (!may('mov.create')) return; openPanel({ type: 'moveedit', id: el.dataset.id }); },
   'adm-edit': el => { UI.open.adm = el.dataset.id; renderMain(); setTimeout(() => $('#adm-date')?.focus(), 0); },
   'adm-cancel': () => { UI.open.adm = null; renderMain(); },
   'adm-save': el => saveAdmissionDate(el.dataset.id),
@@ -3440,6 +3523,8 @@ const SUB = {
   },
   'social-note': form => { const d = readForm(form); if (!showErrors(form, d.text.length < 2 ? { text: 'כתבו את תוכן ההערה' } : {})) return; const r = res(fileCtx().rid); r.social_notes.push({ id: uid('SN'), at: nowIso(), by: me().id, text: d.text }); stamp(r); refresh(); toast('ההערה נוספה'); },
   move: form => saveMove(form),
+  moveret: form => saveMoveReturn(form),
+  moveedit: form => saveMoveEdit(form),
   note: form => saveNote(form),
   contactlog: form => saveContactLog(form),
   prospect: form => saveProspect(form),
