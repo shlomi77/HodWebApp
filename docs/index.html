@@ -304,6 +304,11 @@ details.more[open]{padding-bottom:12px}
 .cat-strip h1{margin:0;font-size:24px;font-weight:800;color:var(--c)}
 .cat-strip .sp{flex:1}
 .cat-strip a.back{font-weight:700;color:var(--c)}
+.hosp-ref{display:flex;width:100%;justify-content:center;gap:10px;font-size:19px;font-weight:800;padding:14px 16px;margin:0 0 12px;min-height:56px}
+.hosp-ref svg{width:22px;height:22px}
+.refpick{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}.refpick button{width:100%;text-align:start;justify-content:flex-start;gap:8px;min-height:48px;flex-wrap:wrap}
+.ref-sum{background:rgba(127,127,127,.1);border-radius:10px;padding:10px 12px;margin:0;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:14px}.ref-sum dt{opacity:.75}.ref-sum dd{margin:0;font-weight:600}
+.letter .lt-bg{white-space:pre-wrap}
 
 /* ---------- medical file (תיק רפואי) ---------- */
 .mhead{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:flex-start;padding:14px 16px;border-top:6px solid var(--cat-medical)}
@@ -2623,7 +2628,7 @@ function viewCat() {
   const quick = c.id === 'admin' ? [['round', 'סבב', 'rounds.run'], ['calls', 'קריאות שירות', 'calls.view'], ['movements', 'תנועות', 'mov.view']].filter(q => may(q[2])).map(([id, name]) => `<a class="btn sm" href="#/${id}">${name}</a>`).join('')
     : c.id === 'medical' && may('catalog.view') ? `<a class="btn sm" href="#/catalog">${ic('pill')} רשימת תרופות (הדגמה)</a>` : '';
   if (c.id === 'marketing') return catStrip(c) + viewProspects(true);
-  return catStrip(c, `<span class="sp"></span>${quick}`) + (c.id === 'medical' && may('clinical.view') ? asmtOverdueList() : '') + (CAT_SECTIONS[c.id] ? catResidents(c) : '');
+  return catStrip(c, `<span class="sp"></span>${quick}`) + (c.id === 'medical' && may('clinical.edit') ? `<button class="btn pri hosp-ref no-print" data-act="hosp-ref">${ic('send')} הפניה לבית חולים / טרם</button>` : '') + (c.id === 'medical' && may('clinical.view') ? asmtOverdueList() : '') + (CAT_SECTIONS[c.id] ? catResidents(c) : '');
 }
 function asmtOverdueList() { // D20: compact list above the residents list, no tile badge
   const rows = S.residents.filter(r => !isGone(r)).map(r => [r, asmtOverdue(r)]).filter(([, l]) => l.length).sort((a, b) => sortApt(a[0], b[0]));
@@ -2763,10 +2768,10 @@ const MED_SECTIONS = {
       { label: 'סטטוס', td: x => `<span class="chip ${{ 'הוזמנה': 'warn', 'בוצעה': 'blue', 'התקבלה תשובה': 'ok', 'בוטלה': '' }[x.status]}">${esc(x.status)}</span>` }, { label: 'תוצאה', td: x => esc(x.result || '—') }] },
   referrals: { name: 'הפניות', icon: 'send', coll: 'referrals', prefix: 'RF', write: 'clinical.edit', rowExtra: x => `<button class="btn sm" data-act="ref-print" data-id="${x.id}">${ic('print')} הדפסה</button>`,
     fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'ref_type', label: 'הפניה אל – סוג', type: 'select', opts: REFERRAL_TYPES, req: 1 }, { k: 'target', label: 'הפניה אל – שם', type: 'text', req: 1, hint: 'לדוגמה: מרפאת עיניים לדוגמה' },
-      { k: 'reason', label: 'סיבת ההפניה', type: 'textarea', req: 1 }, { k: 'doctor', label: 'רופא/ה מפנה', type: 'datalist', opts: () => S.settings.doctors, req: 1 },
+      { k: 'reason', label: 'סיבת ההפניה', type: 'textarea', req: 1 }, { k: 'background', label: 'רקע רפואי (אבחנות, תרופות, רגישויות)', type: 'textarea', hint: 'מולא אוטומטית מהתיק הרפואי. אפשר לערוך' }, { k: 'doctor', label: 'רופא/ה מפנה', type: 'datalist', opts: () => S.settings.doctors, req: 1 },
       { k: 'urgency', label: 'דחיפות', type: 'select', opts: REFERRAL_URGENCY, req: 1 }, { k: 'status', label: 'סטטוס', type: 'select', opts: REFERRAL_STATUS, req: 1 },
       { k: 'appointment', label: 'מועד התור', type: 'datetime' }, { k: 'result', label: 'סיכום תוצאה', type: 'textarea' }],
-    defaults: () => ({ at: today(), urgency: 'normal', status: 'pending' }),
+    defaults: r => ({ at: today(), urgency: 'normal', status: 'pending', background: r ? refBackground(r) : '' }),
     validate: d => { const e = {}; if (futureDate(d.at)) e.at = 'לא יכול להיות בעתיד'; if (d.status === 'scheduled' && !d.appointment) e.appointment = 'בסטטוס "נקבע תור" חובה להזין מועד'; if (d.appointment && d.at && d.appointment.slice(0, 10) < d.at) e.appointment = 'המועד לא יכול להיות לפני תאריך ההפניה'; if (d.status === 'done' && !d.result) e.result = 'בסטטוס "בוצעה" חובה לכתוב סיכום תוצאה'; return e; },
     filters: [{ k: 'status', label: 'כל הסטטוסים', opts: REFERRAL_STATUS }, { k: 'urgency', label: 'כל הדחיפויות', opts: REFERRAL_URGENCY }], match: (x, f) => (!f.status || x.status === f.status) && (!f.urgency || x.urgency === f.urgency),
     cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'הפניה אל', td: x => `<b>${esc(x.target)}</b><br><small class="muted">${esc(x.ref_type)}</small>` }, { label: 'סיבה', td: x => esc(x.reason) },
@@ -3103,6 +3108,25 @@ function letterHead(title) {
     <h2 class="lt-title">${esc(title)}</h2>`;
 }
 const letterFoot = () => `<footer class="lt-foot">הודפס ${fDT(nowIso())} ע״י ${esc(uname(me().id))} · הוד קשר – הוד ירושלים · הדגמה – נתונים פיקטיביים</footer>`;
+/* hospital referral (הפניה לבית חולים / טרם): background text built from the medical file when the form opens; saved with the referral */
+function refBackground(r) {
+  const dx = clinOf('diagnoses', r.id).filter(x => x.status === 'active' && !x.superseded_by).map(x => x.diagnosis + (x.code ? ` (${x.code})` : ''));
+  const meds = S.med_orders.filter(o => o.resident_id === r.id && o.active).map(o => o.drug + (may('meds.view') && o.dose ? ' ' + o.dose : '') + (o.prn ? ' (לפי הצורך)' : ''));
+  const al = allergyNames(r);
+  return `אבחנות פעילות: ${dx.length ? dx.join(', ') : 'לא רשומות'}\nתרופות: ${meds.length ? meds.join(', ') : 'אין הוראות פעילות'}\nרגישויות: ${al.length ? al.join(', ') : 'אין רגישויות ידועות'}\nמצב תפקודי: ${nursingNow(r) || '—'}`;
+}
+function panelRefPick() {
+  if (!may('clinical.edit')) return null;
+  const list = S.residents.filter(r => !isGone(r)).sort(sortApt);
+  return `<div class="p-h"><div><h2>הפניה לבית חולים / טרם</h2><div class="meta">שלב 1 מתוך 2: בחרו דייר/ת</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
+  <div class="p-b"><div class="q">${ic('search')}<input id="refpick-q" type="search" autocomplete="off" placeholder="חיפוש לפי שם, ת״ז או דירה" data-in="refpick" aria-label="חיפוש דייר/ת" autofocus></div>
+  <p class="hint" id="refpick-none" hidden>לא נמצאו דיירים</p>
+  <ul class="refpick">${list.map(r => `<li data-k="${esc(norm(fullName(r)) + ' ' + norm(r.last_name + r.first_name) + ' ' + norm(r.demo_id) + ' @' + norm(r.apartment))}"><button class="btn" data-act="hosp-ref-res" data-rid="${r.id}"><b>${esc(fullName(r))}</b> <span class="muted">דירה <span class="num">${esc(r.apartment)}</span> · גיל <span class="num">${ageOf(r.birth_date)}</span></span>${allergyNames(r).length ? ' <span class="chip red">⚠ רגישות</span>' : ''}</button></li>`).join('')}</ul></div>`;
+}
+function refResSummary(r) {
+  const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`, al = allergyNames(r);
+  return `<dl class="ref-sum">${row('שם', esc(fullName(r)))}${row('ת״ז (הדגמה)', `<span class="num">${esc(r.demo_id)}</span>`)}${row('גיל', `<span class="num">${ageOf(r.birth_date)}</span> (<span class="num">${fD(r.birth_date)}</span>)`)}${row('דירה', `<span class="num">${esc(r.apartment)}</span>`)}${row('קופ״ח', esc(r.medical_fund || '—'))}${row('טלפון', `<span class="num">${esc(r.phone || '—')}</span>`)}${row('רגישויות', al.length ? `<span style="color:var(--danger)">${esc(al.join(', '))}</span>` : 'אין ידועות')}</dl>`;
+}
 function refLetter(x) {
   const r = res(x.resident_id), u = unitOf(r), v = t => esc(t || '—'), al = allergyNames(r);
   const row = (k, val) => `<dt>${k}</dt><dd>${val}</dd>`;
@@ -3114,6 +3138,7 @@ function refLetter(x) {
     <section><h3>פרטי ההפניה</h3><dl class="lt-grid">${row('תאריך', `<span class="num">${fD(x.at)}</span>`)}${row('סוג', v(x.ref_type))}${row('הפניה אל', `<b>${v(x.target)}</b>`)}${row('רופא/ה מפנה', v(x.doctor))}
       ${row('דחיפות', `<span class="chip lt-urg${x.urgency === 'normal' ? '' : ' hi'}">${esc(REFERRAL_URGENCY[x.urgency] || '—')}</span>`)}${row('סטטוס', esc(REFERRAL_STATUS[x.status] || '—'))}${x.appointment ? row('מועד התור', `<span class="num">${fDT(x.appointment)}</span>`) : ''}</dl>
       <div class="lt-reason"><h3>סיבת ההפניה</h3><div class="reason">${v(x.reason)}</div></div>
+      ${x.background ? `<div><h3>רקע רפואי</h3><div class="lt-bg">${esc(x.background)}</div></div>` : ''}
       ${x.status === 'done' ? `<div class="lt-result"><h3>סיכום תוצאה</h3><div>${v(x.result)}</div></div>` : ''}</section>
     ${letterFoot()}</article>`;
 }
@@ -3253,12 +3278,13 @@ function panelMedrec(p) {
   const def = MED_SECTIONS[p.sec]; if (!def || !may('clinical.view')) return null;
   const x = p.id && (S.clin[def.coll] || []).find(y => y.id === p.id), r = res(x ? x.resident_id : p.rid); if (!r || !may(def.write)) return null;
   const corr = !!(p.correct && x && def.lock); if (x && def.lock && (!corr || x.superseded_by)) return null; // locked: only a correction of the newest version
-  const v = x || (def.defaults ? def.defaults(r) : {});
-  return `<div class="p-h"><div><h2>${esc(def.name)} – ${corr ? 'תיקון' : x ? 'עריכה' : 'רשומה חדשה'}</h2><div class="meta">${esc(fullName(r))} · דירה ${esc(r.apartment)}${x ? ` · נרשם ע״י ${esc(uname(x.by))} ${fDT(x.created_at)}` : ''}</div></div>${p.sec === 'referrals' && x ? `<button type="button" class="btn sm" data-act="ref-print" data-id="${x.id}" title="הדפסת מכתב (הגרסה השמורה)">${ic('print')} הדפסה</button>` : ''}<button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
-  <div class="p-b"><form class="form" data-submit="medrec" data-sec="${p.sec}" data-id="${x ? x.id : ''}" data-rid="${r.id}" ${corr ? 'data-correct="1"' : ''} ${def.asmt ? `data-asmt="${p.sec}"` : ''} autocomplete="off">
+  const hosp = !!(p.hosp && p.sec === 'referrals' && !x), v = x || { ...(def.defaults ? def.defaults(r) : {}), ...(hosp ? { ref_type: 'בית חולים', urgency: 'urgent' } : {}) };
+  return `<div class="p-h"><div><h2>${hosp ? 'הפניה לבית חולים / טרם' : `${esc(def.name)} – ${corr ? 'תיקון' : x ? 'עריכה' : 'רשומה חדשה'}`}</h2><div class="meta">${esc(fullName(r))} · דירה ${esc(r.apartment)}${x ? ` · נרשם ע״י ${esc(uname(x.by))} ${fDT(x.created_at)}` : ''}</div></div>${p.sec === 'referrals' && x ? `<button type="button" class="btn sm" data-act="ref-print" data-id="${x.id}" title="הדפסת מכתב (הגרסה השמורה)">${ic('print')} הדפסה</button>` : ''}<button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
+  <div class="p-b"><form class="form" data-submit="medrec" data-sec="${p.sec}" data-id="${x ? x.id : ''}" data-rid="${r.id}" ${hosp ? 'data-hosp="1"' : ''} ${corr ? 'data-correct="1"' : ''} ${def.asmt ? `data-asmt="${p.sec}"` : ''} autocomplete="off">
     ${corr ? `<p class="note-inline info" style="margin:0">הרשומה ${esc(x.id)} נעולה. השמירה יוצרת רשומת תיקון חדשה; המקור נשאר כמו שהוא ומסומן "הוחלף ע״י תיקון".</p>${fld('סיבת התיקון', '<textarea name="correction_reason" autofocus></textarea>', 'correction_reason', 1)}` : ''}
+    ${hosp ? `<p class="hint" style="margin:0">שלב 2 מתוך 2: פרטי הדייר/ת והרקע הרפואי מולאו מהתיק. מלאו את שם בית החולים וסיבת ההפניה, ושמרו להדפסה.</p>${refResSummary(r)}<div><button type="button" class="btn sm" data-act="hosp-ref">← בחירת דייר/ת אחר/ת</button></div>` : ''}
     ${def.fields.map(fd => medField(fd, v[fd.k], r)).join('')}
-    <div class="actions"><button class="btn pri">שמירה</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
+    <div class="actions"><button class="btn pri">${hosp ? `${ic('print')} שמירה והצגת מכתב להדפסה` : 'שמירה'}</button><button type="button" class="btn" data-act="close-panel">ביטול</button></div></form></div>`;
 }
 // R13 editable-section history diff (QA round 2): empty bool (false) and empty multi ([]) count as blank too
 const clinBlank = (fd, v) => v === undefined || v === null || v === '' || (fd?.type === 'bool' && v === false) || (fd?.type === 'multi' && Array.isArray(v) && !v.length) ? null : v;
@@ -3288,6 +3314,7 @@ function saveMedrec(form) {
   else { rec = stamp({ id: uid(def.prefix || 'CR'), resident_id: r.id, ...data, by: me().id }, true); coll.push(rec); toast('הרשומה נשמרה'); }
   if (def.onSave) def.onSave(rec, r);
   closePanel();
+  if (form.dataset.hosp && rec) openPanel({ type: 'refletter', id: rec.id }); // hospital referral: straight to the printable letter
   if (def.after) def.after(rec, !x, d);
   refresh();
 }
@@ -3395,7 +3422,7 @@ function saveProspectFu(form) {
 }
 
 const VIEWS = { prospects: () => viewProspects(false), catalog: viewCatalog, home: viewHome, cat: viewCat, round: viewRound, residents: viewResidents, resident: viewResidentFile, movements: viewMovements, handover: viewHandover, calls: viewCalls, events: viewEvents, meds: viewMeds, reports: viewReports, settings: viewSettings };
-const PANELS = { prngive: panelPrnGive, medorder: panelMedOrder, medhandling: panelMedHandling, intake: panelIntake, medrec: panelMedrec, vitalfix: panelVitalfix, prospect: panelProspect, contactlog: panelContactLog, res: panelResident, refletter: panelRefLetter, move: panelMove, moveret: panelMoveReturn, moveedit: panelMoveEdit, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
+const PANELS = { prngive: panelPrnGive, medorder: panelMedOrder, medhandling: panelMedHandling, intake: panelIntake, medrec: panelMedrec, vitalfix: panelVitalfix, prospect: panelProspect, contactlog: panelContactLog, res: panelResident, refletter: panelRefLetter, refpick: panelRefPick, move: panelMove, moveret: panelMoveReturn, moveedit: panelMoveEdit, note: panelNote, call: panelCall, event: panelEvent, vitals: panelVitals };
 
 /* ================================================================
    Event wiring: clicks, inputs, changes, submits, keyboard, routing
@@ -3518,6 +3545,8 @@ const ACT = {
   'medorder-new': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); openPanel({ type: 'medorder', rid: el.dataset.rid }); },
   'medorder-update': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); const sel = medF().sel; if (sel.length > 1) return toast('לעדכון בחרו הוראה אחת בלבד'); openPanel(sel.length ? { type: 'medorder', id: sel[0] } : { type: 'medhandling', rid: el.dataset.rid }); },
   'intake-open': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); const sel = medF().sel.filter(id => byId(S.med_orders, id)?.active); if (!sel.length) return toast('בחרו לפחות הוראה פעילה אחת לבדיקת נטילה'); openPanel({ type: 'intake', rid: el.dataset.rid, ids: sel }); },
+  'hosp-ref': () => { if (!may('clinical.edit')) return toast(NO_PERM_ACT); openPanel({ type: 'refpick' }); },
+  'hosp-ref-res': el => { if (!may('clinical.edit')) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: 'referrals', rid: el.dataset.rid, hosp: 1 }); },
   'medrec-new': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, rid: el.dataset.rid }); },
   'mtask-add': () => { $('#mtask-rows').insertAdjacentHTML('beforeend', $('#mtask-tpl').innerHTML); $('#mtask-rows [data-trow]:last-child input')?.focus(); },
   'mtask-done': el => { if (!may('clinical.edit')) { el.checked = !el.checked; return toast(NO_PERM_ACT); } const x = S.clin.meetings.find(y => y.id === el.dataset.id), t = x?.tasks[+el.dataset.i]; if (!t || x.superseded_by) return; // allowed on a locked meeting (D14), audited in task_log
@@ -3603,6 +3632,7 @@ function cancelEdit() {
 const IN = {
   gsearch: () => { UI.gsel = 0; renderGsearch(); },
   dx: () => { UI.dxsel = 0; dxRender(); },
+  refpick: el => { const q = norm(el.value.trim()); let n = 0; for (const li of $$('#panel .refpick li')) { const k = li.dataset.k, ok = !q || k.includes(q); li.hidden = !ok; n += ok; } $('#refpick-none').hidden = !!n; },
   'round-q': el => { UI.f.round.q = el.value; renderMain(); },
   f: el => { let v = el.type === 'checkbox' ? el.checked : el.value; if (el.dataset.date != null) { if (v && !parseD(v)) { el.classList.add('inv'); return; } v = v ? parseD(v) : ''; } UI.f[el.dataset.view][el.dataset.k] = v; renderMain(); },
   'call-res': el => { const r = residentFromLabel(el.value), loc = el.form.elements.location; if (r && (!loc.value || /^דירה /.test(loc.value))) loc.value = 'דירה ' + r.apartment; },
