@@ -3096,12 +3096,18 @@ function viewMedicalFile() {
   </div>`;
 }
 /* referral letter: read-only side panel, printed through the same print-panel pattern as the incident report; settings are read at render time */
+/* shared letter header/footer: read S.settings at call time (never cached) */
+function letterHead(title) {
+  const st = S.settings, src = st.facility_logo || DEFAULT_FACILITY_LOGO;
+  return `<header class="lt-head"><div class="logo-plate"><img src="${esc(src)}" alt="לוגו המוסד"></div><div class="lt-fac"><h1>${esc(st.facility_name || FACILITY_DEFAULTS.facility_name)}</h1><div>${esc(st.facility_address || '—')} · טל׳ <span class="num">${esc(st.facility_phone || '—')}</span></div></div></header>
+    <h2 class="lt-title">${esc(title)}</h2>`;
+}
+const letterFoot = () => `<footer class="lt-foot">הודפס ${fDT(nowIso())} ע״י ${esc(uname(me().id))} · הוד קשר – הוד ירושלים · הדגמה – נתונים פיקטיביים</footer>`;
 function refLetter(x) {
-  const r = res(x.resident_id), u = unitOf(r), st = S.settings, v = t => esc(t || '—'), al = allergyNames(r), src = st.facility_logo || DEFAULT_FACILITY_LOGO;
+  const r = res(x.resident_id), u = unitOf(r), v = t => esc(t || '—'), al = allergyNames(r);
   const row = (k, val) => `<dt>${k}</dt><dd>${val}</dd>`;
   return `<article class="letter">
-    <header class="lt-head"><div class="logo-plate"><img src="${esc(src)}" alt="לוגו המוסד"></div><div class="lt-fac"><h1>${esc(st.facility_name || FACILITY_DEFAULTS.facility_name)}</h1><div>${esc(st.facility_address || '—')} · טל׳ <span class="num">${esc(st.facility_phone || '—')}</span></div></div></header>
-    <h2 class="lt-title">מכתב הפניה</h2>
+    ${letterHead('מכתב הפניה')}
     <section><h3>פרטי הדייר/ת</h3><dl class="lt-grid">${row('שם מלא', `<b>${v(fullName(r))}</b>`)}${row('מזהה הדגמה', `<span class="num">${v(r.demo_id)}</span>`)}${row('מגדר', r.gender === 'F' ? 'נקבה' : 'זכר')}
       ${row('תאריך לידה', `<span class="num">${fD(r.birth_date)}</span> (גיל <span class="num">${ageOf(r.birth_date)}</span>)`)}${row('דירה', `<span class="num">${v(r.apartment)}</span>`)}${row('מיקום', `קומה <span class="num">${esc(u.floor)}</span> · בניין ${esc(u.building)}`)}
       ${row('קופ״ח', v(r.medical_fund))}${row('טלפון', `<span class="num">${v(r.phone)}</span>`)}${row('רגישויות', al.length ? esc(al.join(', ')) : 'אין רגישויות ידועות')}</dl></section>
@@ -3109,7 +3115,7 @@ function refLetter(x) {
       ${row('דחיפות', `<span class="chip lt-urg${x.urgency === 'normal' ? '' : ' hi'}">${esc(REFERRAL_URGENCY[x.urgency] || '—')}</span>`)}${row('סטטוס', esc(REFERRAL_STATUS[x.status] || '—'))}${x.appointment ? row('מועד התור', `<span class="num">${fDT(x.appointment)}</span>`) : ''}</dl>
       <div class="lt-reason"><h3>סיבת ההפניה</h3><div class="reason">${v(x.reason)}</div></div>
       ${x.status === 'done' ? `<div class="lt-result"><h3>סיכום תוצאה</h3><div>${v(x.result)}</div></div>` : ''}</section>
-    <footer class="lt-foot">הודפס ${fDT(nowIso())} ע״י ${esc(uname(me().id))} · הוד קשר – הוד ירושלים · הדגמה – נתונים פיקטיביים</footer></article>`;
+    ${letterFoot()}</article>`;
 }
 function panelRefLetter(p) {
   const x = S.clin.referrals.find(y => y.id === p.id); if (!x || !res(x.resident_id) || !may('clinical.view')) return null;
