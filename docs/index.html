@@ -1258,7 +1258,7 @@ function renderPanel() {
   const P = $('#panel');
   if (!UI.panel || !PANELS[UI.panel.type]) { P.hidden = true; P.innerHTML = ''; document.body.classList.remove('panel-open'); return; }
   const html = PANELS[UI.panel.type](UI.panel); if (html == null) { UI.panel = null; return renderPanel(); }
-  keepFocus(() => { P.innerHTML = html; applyWhenAll(P); }); P.hidden = false; document.body.classList.add('panel-open');
+  keepFocus(() => { P.innerHTML = html; applyWhenAll(P); }); dxInit(); P.hidden = false; document.body.classList.add('panel-open');
 }
 function openPanel(p) { UI.panel = p; UI.confirm = null; renderPanel(); setTimeout(() => { const f = $('#panel [autofocus]') || $('#panel .x'); f && f.focus(); }, 0); }
 function closePanel() { UI.panel = null; renderPanel(); }
@@ -2775,10 +2775,10 @@ const MED_SECTIONS = {
     cols: [{ label: 'תאריך', td: x => `<span class="num">${fD(x.at)}</span>` }, { label: 'סוג', td: x => esc(x.service_type) }, { label: 'תיאור', td: x => esc(x.description) }, { label: 'מטפל/ת', td: x => esc(uname(x.handler)) },
       { label: 'קריאת שירות', td: x => { const c = x.call_id && byId(S.service_calls, x.call_id); return c ? `<button class="btn sm" data-act="open-call" data-id="${c.id}">${c.id}</button> <span class="chip ${CALL_CHIP[c.status]}">${CALL_STATUS[c.status]}</span>` : '—'; } }] },
   diagnoses: { name: 'אבחנות', icon: 'clip', coll: 'diagnoses', prefix: 'DX', write: 'clinical.edit',
-    fields: [{ k: 'diagnosis', label: 'אבחנה', type: 'text', req: 1 }, { k: 'code', label: 'קוד ICD-10 (רשות)', type: 'text', hint: 'למשל I10 או E11.9' }, { k: 'at', label: 'תאריך אבחון', type: 'date', req: 1 },
+    fields: [{ k: 'diagnosis', label: 'אבחנה', type: 'custom', req: 1, html: v => dxPickerField(v), read: form => form.elements.diagnosis.value.trim() }, { k: 'code', label: 'קוד ICD-10 (רשות)', type: 'text', hint: 'למשל I10 או E11.9' }, { k: 'at', label: 'תאריך אבחון', type: 'date', req: 1 },
       { k: 'status', label: 'מצב', type: 'select', opts: { active: 'פעילה', past: 'עבר' }, req: 1 }, { k: 'doctor', label: 'רופא/ה מאבחן/ת', type: 'datalist', opts: () => S.settings.doctors }],
     defaults: () => ({ at: today(), status: 'active' }),
-    validate: d => { const e = {}; if (futureDate(d.at)) e.at = 'לא יכול להיות בעתיד'; d.code = (d.code || '').trim().toUpperCase(); if (d.code && !ICD10_RE.test(d.code)) e.code = 'קוד ICD-10 לא תקין (למשל I10 או E11.9)'; return e; }, // D21: stored uppercased
+    validate: d => { const e = {}; if (!d.diagnosis) e.diagnosis = 'שדה חובה'; /* custom fields skip the generic required check */ if (futureDate(d.at)) e.at = 'לא יכול להיות בעתיד'; d.code = (d.code || '').trim().toUpperCase(); if (d.code && !ICD10_RE.test(d.code)) e.code = 'קוד ICD-10 לא תקין (למשל I10 או E11.9)'; return e; }, // D21: stored uppercased
     filters: [{ k: 'status', label: 'פעילות ועבר', opts: { active: 'פעילות', past: 'עבר' } }], match: (x, f) => !f.status || x.status === f.status,
     cols: [{ label: 'אבחנה', td: x => `<b>${esc(x.diagnosis)}</b>${x.code ? ` <small class="muted num">${esc(x.code)}</small>` : ''}` }, { label: 'תאריך אבחון', td: x => `<span class="num">${fD(x.at)}</span>` },
       { label: 'מצב', td: x => `<span class="chip ${x.status === 'active' ? 'red' : ''}">${x.status === 'active' ? 'פעילה' : 'עבר'}</span>` }, { label: 'רופא/ה', td: x => esc(x.doctor || '—') }] },
@@ -3067,6 +3067,99 @@ function viewMedicalFile() {
   </div>`;
 }
 const ICD10_RE = /^[A-Z]\d{2}(\.[0-9A-Z]{1,4})?$/;
+// demo catalog – ICD-10-shaped, not an official list (הדגמה)
+const DX_CATALOG = [
+  // מחזור הדם
+  ['יתר לחץ דם', 'I10'], ['אי ספיקת לב', 'I50.9'], ['אי ספיקת לב סיסטולית', 'I50.2'], ['פרפור פרוזדורים', 'I48.91'], ['מחלת לב איסכמית', 'I25.9'], ['אוטם שריר הלב ישן', 'I25.2'],
+  ['תעוקת חזה (אנגינה פקטוריס)', 'I20.9'], ['אוטם חריף בשריר הלב', 'I21.9'], ['אוטם מוחי (שבץ)', 'I63.9'], ['מחלת כלי דם מוחית', 'I67.9'], ['מחלת כלי דם היקפית', 'I73.9'],
+  ['מפרצת אבי העורקים', 'I71.9'], ['היצרות מסתם אבי העורקים', 'I35.0'], ['אי ספיקת מסתם מיטרלי', 'I34.0'], ['הפרעת קצב לב', 'I49.9'], ['קוצב לב – מצב לאחר השתלה', 'Z95.0'],
+  ['דליות ברגליים', 'I83.9'], ['פקקת ורידים עמוקים', 'I82.9'], ['תסחיף ריאתי', 'I26.9'], ['קרדיומיופתיה', 'I42.9'], ['אי ספיקה ורידית כרונית', 'I87.2'],
+  ['לחץ דם נמוך בעמידה', 'I95.1'], ['בצקת ברגליים', 'R60.0'], ['ברדיקרדיה', 'R00.1'], ['טכיקרדיה', 'R00.0'], ['יתר לחץ דם משני', 'I15.9'],
+  // אנדוקרינולוגיה ומטבוליזם
+  ['סוכרת סוג 2', 'E11.9'], ['סוכרת סוג 1', 'E10.9'], ['סוכרת סוג 2 עם רטינופתיה', 'E11.3'], ['סוכרת סוג 2 עם פגיעה בכליה', 'E11.2'], ['סוכרת סוג 2 עם נוירופתיה', 'E11.4'],
+  ['היפותירואידיזם', 'E03.9'], ['היפרתירואידיזם', 'E05.9'], ['גושים בבלוטת התריס', 'E04.1'], ['היפרליפידמיה', 'E78.5'], ['השמנה', 'E66.9'], ['חסר ויטמין D', 'E55.9'],
+  ['חסר ויטמין B12', 'E53.8'], ['התייבשות', 'E86.0'], ['היפונתרמיה', 'E87.1'], ['היפרקלמיה', 'E87.5'], ['היפוגליקמיה', 'E16.2'],
+  // מערכת העצבים והקוגניציה
+  ['מחלת אלצהיימר', 'G30.9'], ['דמנציה קלה', 'F03'], ['דמנציה וסקולרית', 'F01.9'], ['דמנציה עם גופיפי לוי', 'G31.83'], ['ירידה קוגניטיבית קלה (MCI)', 'G31.84'],
+  ['מחלת פרקינסון', 'G20'], ['אפילפסיה', 'G40.9'], ['נוירופתיה היקפית', 'G62.9'], ['מיגרנה', 'G43.9'], ['התקף איסכמי חולף (TIA)', 'G45.9'], ['מצב לאחר שבץ מוחי', 'I69.4'],
+  ['נדודי שינה', 'G47.0'], ['דום נשימה בשינה', 'G47.3'], ['תסמונת רגליים חסרות מנוחה', 'G25.81'], ['רעד חיוני', 'G25.0'], ['סחרחורת', 'R42'], ['הפרעות הליכה ושיווי משקל', 'R26.8'],
+  ['פגיעה מוחית טראומטית', 'S06.9'], ['נוירלגיה טריגמינלית', 'G50.0'], ['הידרוצפלוס בלחץ תקין', 'G91.2'],
+  // נפש והתנהגות
+  ['דיכאון', 'F32.9'], ['דיכאון חוזר', 'F33.9'], ['אפיזודה דיכאונית חמורה', 'F32.2'], ['הפרעת חרדה', 'F41.9'], ['הפרעת חרדה כללית', 'F41.1'], ['דליריום', 'F05.9'],
+  ['הפרעה דו-קוטבית', 'F31.9'], ['סכיזופרניה', 'F20.9'], ['פסיכוזה', 'F29'], ['הפרעת הסתגלות', 'F43.2'], ['הפרעה טורדנית כפייתית', 'F42.9'], ['תגובת אבל', 'Z63.4'], ['בלבול', 'R41.0'],
+  // נשימה
+  ['מחלת ריאות חסימתית (COPD)', 'J44.9'], ['אסתמה', 'J45.9'], ['דלקת ריאות', 'J18.9'], ['ברונכיטיס כרונית', 'J42'], ['אמפיזמה', 'J43.9'], ['אי ספיקת נשימה', 'J96.9'],
+  ['דלקת סימפונות חריפה', 'J20.9'], ['שפעת', 'J11.1'], ['פיברוזיס ריאתי', 'J84.1'], ['נזלת אלרגית', 'J30.4'], ['טיפול בחמצן ביתי', 'Z99.81'], ['דלקת ריאות שאיפה', 'J69.0'],
+  // שלד ושרירים
+  ['אוסטאופורוזיס', 'M81.0'], ['אוסטאופניה', 'M85.8'], ['דלקת מפרקים ניוונית בברך', 'M17.9'], ['דלקת מפרקים ניוונית במפרק הירך', 'M16.9'], ['דלקת מפרקים ניוונית כללית', 'M15.9'],
+  ['דלקת מפרקים שגרונתית', 'M06.9'], ['גאוט', 'M10.9'], ['שבר בצוואר הירך', 'S72.0'], ['שבר דחיסה בחוליה', 'M48.5'], ['שבר בשורש כף היד', 'S52.5'], ['שבר בעצם הזרוע', 'S42.2'],
+  ['כאב גב תחתון', 'M54.5'], ['סיאטיקה', 'M54.3'], ['היצרות תעלת השדרה', 'M48.0'], ['פריצת דיסק', 'M51.2'], ['ספונדילוזיס', 'M47.9'], ['כאב צוואר', 'M54.2'],
+  ['דלקת בגידי הכתף', 'M75.1'], ['כתף קפואה', 'M75.0'], ['תסמונת התעלה הקרפלית', 'G56.0'], ['פיברומיאלגיה', 'M79.7'], ['פולימיאלגיה שגרונתית', 'M35.3'], ['אובדן מסת שריר (סרקופניה)', 'M62.84'],
+  ['מצב לאחר החלפת מפרק ירך', 'Z96.64'], ['מצב לאחר החלפת מפרק ברך', 'Z96.65'], ['כאבי מפרקים', 'M25.5'],
+  // עיניים
+  ['קטרקט', 'H26.9'], ['גלאוקומה', 'H40.9'], ['ניוון מקולרי', 'H35.3'], ['רטינופתיה סוכרתית', 'H36.0'], ['ירידה בראייה', 'H54.7'], ['יובש בעיניים', 'H04.1'],
+  ['פרסביופיה', 'H52.4'], ['היפרדות רשתית', 'H33.9'], ['דלקת הלחמית', 'H10.9'], ['עיוורון', 'H54.0'],
+  // אוזניים
+  ['ירידה בשמיעה', 'H91.9'], ['ירידה בשמיעה תחושתית-עצבית', 'H90.5'], ['טינטון (צפצופים באוזניים)', 'H93.1'], ['סחרחורת תנוחתית (BPPV)', 'H81.1'], ['דלקת אוזן תיכונה', 'H66.9'], ['שעוות אוזן', 'H61.2'],
+  // עיכול וכבד
+  ['ריפלוקס (GERD)', 'K21.9'], ['עצירות', 'K59.0'], ['כיב קיבה', 'K25.9'], ['דלקת קיבה (גסטריטיס)', 'K29.7'], ['דיברטיקולוזיס', 'K57.9'], ['תסמונת המעי הרגיז', 'K58.9'],
+  ['כבד שומני', 'K76.0'], ['שחמת הכבד', 'K74.6'], ['אבנים בכיס המרה', 'K80.2'], ['דלקת כיס המרה', 'K81.9'], ['דלקת בלבלב', 'K85.9'], ['בקע מפשעתי', 'K40.9'], ['טחורים', 'K64.9'],
+  ['דימום ממערכת העיכול', 'K92.2'], ['שלשול כרוני', 'K52.9'], ['קושי בבליעה', 'R13.1'], ['אי נקיטת צואה', 'R15.9'], ['קוליטיס כיבית', 'K51.9'], ['בחילות', 'R11'],
+  // כליות ודרכי השתן
+  ['מחלת כליות כרונית', 'N18.9'], ['אי ספיקת כליות חריפה', 'N17.9'], ['הגדלה שפירה של הערמונית', 'N40'], ['זיהום בדרכי השתן', 'N39.0'], ['אבני כליה', 'N20.0'], ['שלפוחית שתן רגיזה', 'N32.81'],
+  ['אצירת שתן', 'R33'], ['דם בשתן', 'R31'], ['דלקת בשלפוחית השתן', 'N30.9'], ['צניחת רחם', 'N81.9'], ['שימוש בצנתר שתן', 'Z46.6'],
+  // עור
+  ['פצע לחץ', 'L89.9'], ['אקזמה', 'L30.9'], ['פסוריאזיס', 'L40.9'], ['זיהום פטרייתי בעור', 'B35.9'], ['שלבקת חוגרת', 'B02.9'], ['קרטוזיס שמשי', 'L57.0'],
+  ['צלוליטיס (דלקת רקמה תת-עורית)', 'L03.9'], ['גרד', 'L29.9'], ['עור יבש', 'L85.3'], ['כיב כרוני ברגל', 'L97.9'],
+  // דם
+  ['אנמיה', 'D64.9'], ['אנמיה מחוסר ברזל', 'D50.9'], ['אנמיה מחוסר ויטמין B12', 'D51.9'], ['טרומבוציטופניה', 'D69.6'], ['טיפול ממושך בנוגדי קרישה', 'Z79.01'], ['לויקופניה', 'D72.819'],
+  // אונקולוגיה (מחלה או היסטוריה)
+  ['סרטן השד', 'C50.9'], ['סרטן הערמונית', 'C61'], ['סרטן המעי הגס', 'C18.9'], ['סרטן הריאה', 'C34.9'], ['סרטן הלבלב', 'C25.9'], ['סרטן הקיבה', 'C16.9'],
+  ['סרטן שלפוחית השתן', 'C67.9'], ['סרטן עור (תאי בסיס)', 'C44.9'], ['מלנומה', 'C43.9'], ['לימפומה', 'C85.9'], ['גרורות בעצמות', 'C79.5'], ['היסטוריה אישית של סרטן', 'Z85.9'],
+  // זיהומים שכיחים בקשישים
+  ['קורונה (COVID-19)', 'U07.1'], ['גסטרואנטריטיס זיהומית', 'A09'], ['זיהום בקלוסטרידיום דיפיציל', 'A04.7'], ['גרדת (סקביאס)', 'B86'], ['נשאות MRSA', 'Z22.3'], ['אלח דם (ספסיס)', 'A41.9'],
+  ['דלקת כבד נגיפית C כרונית', 'B18.2'], ['פטרת בציפורניים', 'B35.1'],
+  // תסמינים ומצבים כלליים
+  ['נפילות חוזרות', 'R29.6'], ['סיכון לנפילה', 'Z91.81'], ['שברירות (פרייליטי)', 'R54'], ['בריחת שתן', 'R32'], ['תת תזונה', 'E46'], ['ירידה במשקל', 'R63.4'],
+  ['חולשה כללית', 'R53.1'], ['קושי בהליכה', 'R26.2'], ['תלות בכיסא גלגלים', 'Z99.3'], ['כאב כרוני', 'G89.29'],
+].map(([name, code]) => ({ name, code }));
+/* picker: names and query run through allergyTokens (D14); name = every query token is a word prefix, code = query is a prefix of the code with or without its dot */
+const DX_TOK = new Map();
+const dxTok = x => { let t = DX_TOK.get(x); if (!t) DX_TOK.set(x, t = allergyTokens(x.name)); return t; };
+function dxSearch(q) {
+  const qt = allergyTokens(q), qj = qt.join(' '), qc = String(q ?? '').replace(/\s+/g, '').toUpperCase().replace('.', ''); if (!qt.length) return [];
+  const out = [];
+  DX_CATALOG.forEach((x, i) => {
+    const nt = dxTok(x), nj = nt.join(' '), nameHit = qt.every(w => nt.some(t => t.startsWith(w))), codeHit = !!qc && /^[A-Z0-9]+$/.test(qc) && x.code.replace('.', '').startsWith(qc);
+    if (!nameHit && !codeHit) return;
+    out.push({ x, i, rank: nameHit && nj === qj ? 1 : nameHit && nj.startsWith(qj) ? 2 : codeHit ? 3 : 4 });
+  });
+  return out.sort((a, b) => a.rank - b.rank || a.i - b.i).map(o => o.x);
+}
+const dxExact = name => { const k = allergyTokens(name).join(' '); return k ? DX_CATALOG.find(x => dxTok(x).join(' ') === k) : undefined; };
+const DX_HINT0 = () => `הקלידו לחיפוש לפי שם או קוד · ${DX_CATALOG.length} אבחנות בקטלוג (הדגמה)`;
+function dxPickerField(v) {
+  return `<div class="fld req"><span>אבחנה</span><div style="position:relative"><input name="diagnosis" id="dx-q" type="text" role="combobox" aria-label="אבחנה" aria-autocomplete="list" aria-expanded="false" aria-controls="dx-res" autocomplete="off" data-in="dx" value="${esc(v ?? '')}"><div class="gresults" id="dx-res" role="listbox" hidden></div></div>
+    <span class="hint" id="dx-hint">${DX_HINT0()}</span><span class="hint">קטלוג אבחנות (הדגמה)</span><span class="err" data-for="diagnosis"></span></div>`;
+}
+function dxRender() {
+  const q = $('#dx-q'), box = $('#dx-res'), hint = $('#dx-hint'); if (!q || !box) return;
+  const v = q.value.trim(), list = v ? dxSearch(v) : [], shown = list.slice(0, 20); UI.dxres = shown; UI.dxsel = Math.min(UI.dxsel || 0, Math.max(0, shown.length - 1));
+  box.innerHTML = shown.map((x, i) => `<button type="button" role="option" id="dx-o${i}" data-act="dx-pick" data-i="${i}" aria-selected="${i === UI.dxsel}"><b>${esc(x.name)}</b><small class="muted num">${esc(x.code)}</small></button>`).join('') + (list.length > 20 ? '<div class="empty-s">מוצגות 20 ראשונות – הקלידו לחיפוש מדויק יותר</div>' : '');
+  box.hidden = !shown.length; q.setAttribute('aria-expanded', String(!!shown.length));
+  hint.textContent = !v ? DX_HINT0() : dxExact(v) ? '' : 'לא נמצא בקטלוג — יישמר כטקסט חופשי';
+}
+function dxPick(i) {
+  const x = UI.dxres?.[i], q = $('#dx-q'); if (!x || !q) return; const f = q.form;
+  q.value = x.name; if (f.elements.code) f.elements.code.value = x.code; UI.dirty = true;
+  UI.dxres = []; $('#dx-res').hidden = true; q.setAttribute('aria-expanded', 'false'); $('#dx-hint').textContent = ''; f.elements.code?.focus();
+}
+function dxInit() { // an existing record with no code but a catalog name: suggest the code in the input only (stored on save)
+  const q = $('#dx-q'); if (!q) return; const code = q.form.elements.code, x = q.value.trim() && dxExact(q.value);
+  if (x && code && !code.value.trim()) { code.value = x.code; $('#dx-hint').textContent = 'הקוד הוצע מהקטלוג – אפשר למחוק'; }
+  else if (q.value.trim() && !x) $('#dx-hint').textContent = 'לא נמצא בקטלוג — יישמר כטקסט חופשי';
+}
+
 /* R13 (D2, D14, D15): locked records are never edited; a correction is a new linked record and the original only gains superseded_by */
 const corrTag = x => x.superseded_by ? `<br><span class="chip">הוחלף ע״י תיקון</span> <button class="linkbtn" data-act="rec-jump" data-id="${esc(x.superseded_by)}">לתיקון</button>`
   : x.correction_of ? `<br><span class="chip blue">תיקון של <button class="linkbtn" data-act="rec-jump" data-id="${esc(x.correction_of)}">${esc(x.correction_of)}</button></span><br><small class="muted">סיבה: ${esc(x.correction_reason || '')}</small>` : '';
@@ -3341,6 +3434,7 @@ const ACT = {
   // movements
   'new-move': el => openPanel({ type: 'move', rid: el.dataset.rid }),
   'move-return': el => { if (!may('mov.create')) return; openPanel({ type: 'moveret', id: el.dataset.id }); },
+  'dx-pick': el => dxPick(+el.dataset.i),
   'move-edit': el => { if (!may('mov.create')) return; openPanel({ type: 'moveedit', id: el.dataset.id }); },
   'adm-edit': el => { UI.open.adm = el.dataset.id; renderMain(); setTimeout(() => $('#adm-date')?.focus(), 0); },
   'adm-cancel': () => { UI.open.adm = null; renderMain(); },
@@ -3450,6 +3544,7 @@ function cancelEdit() {
 }
 const IN = {
   gsearch: () => { UI.gsel = 0; renderGsearch(); },
+  dx: () => { UI.dxsel = 0; dxRender(); },
   'round-q': el => { UI.f.round.q = el.value; renderMain(); },
   f: el => { let v = el.type === 'checkbox' ? el.checked : el.value; if (el.dataset.date != null) { if (v && !parseD(v)) { el.classList.add('inv'); return; } v = v ? parseD(v) : ''; } UI.f[el.dataset.view][el.dataset.k] = v; renderMain(); },
   'call-res': el => { const r = residentFromLabel(el.value), loc = el.form.elements.location; if (r && (!loc.value || /^דירה /.test(loc.value))) loc.value = 'דירה ' + r.apartment; },
@@ -3618,6 +3713,12 @@ document.addEventListener('keydown', ev => {
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); UI.gsel = Math.max(0, Math.min(items.length - 1, UI.gsel + (ev.key === 'ArrowDown' ? 1 : -1))); renderGsearch(); return; }
     if (ev.key === 'Enter' && items[UI.gsel]) { ev.preventDefault(); openResident(items[UI.gsel].dataset.id); return; }
     if (ev.key === 'Escape') { ev.target.value = ''; box.hidden = true; ev.target.blur(); return; }
+  }
+  if (ev.target.id === 'dx-q') {
+    const items = $$('#dx-res [data-act="dx-pick"]'), open = !$('#dx-res').hidden && items.length;
+    if (open && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) { ev.preventDefault(); UI.dxsel = Math.max(0, Math.min(items.length - 1, (UI.dxsel || 0) + (ev.key === 'ArrowDown' ? 1 : -1))); items.forEach((b, i) => b.setAttribute('aria-selected', String(i === UI.dxsel))); items[UI.dxsel].scrollIntoView({ block: 'nearest' }); return; }
+    if (open && ev.key === 'Enter') { ev.preventDefault(); dxPick(UI.dxsel || 0); return; }
+    if (open && ev.key === 'Escape') { ev.preventDefault(); $('#dx-res').hidden = true; ev.target.setAttribute('aria-expanded', 'false'); return; }
   }
   if (ev.key === 'Escape' && UI.modal) { closeModal(true); return; }
   if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'ז' || ev.code === 'KeyZ') && UI.lastMark && Date.now() <= UI.lastMark.until && !/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) { ev.preventDefault(); ACT['self-undo'](); return; }
