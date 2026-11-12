@@ -2824,8 +2824,8 @@ function recSum(sec, x) {
 function auditRows(r) {
   const rows = [], add = (at, by, action, type, summary, sec) => at && rows.push({ at, by, action, type, summary, sec });
   const adm = admissionOf(r); if (adm) add(adm.created_at || adm.start, adm.by, 'נוצר', 'קבלה לדיור', `כניסה לדיור ${fD(adm.start)}`, 'movements');
-  for (const m of S.movements.filter(x => x.resident_id === r.id && x.type !== 'admission')) {
-    add(m.created_at || m.start, m.by, 'נוצר', 'תנועה', `${MT[m.type].name}${moveWhere(m)} · ${fDT(m.start)}`, 'movements');
+  for (const m of S.movements.filter(x => x.resident_id === r.id)) { // admission: only its corrections (its creation line is above)
+    if (m.type !== 'admission') add(m.created_at || m.start, m.by, 'נוצר', 'תנועה', `${MT[m.type].name}${moveWhere(m)} · ${fDT(m.start)}`, 'movements');
     if (m.end && MT[m.type].closer) add(m.end, m.closed_by, 'נסגר', 'תנועה', `${m.closed_type || MT[m.type].closer} · ${fDT(m.end)}`, 'movements');
     for (const h of (m.history || []).filter(x => x.kind === 'correction')) add(h.at, h.by, 'תוקן', 'תנועה', `סיבה: ${auditClip(h.reason, 60)} · שונו: ${Object.keys(h.prev || {}).map(k => MOVE_FIELD_LABEL[k] || k).join(', ')}`, 'movements');
   }
@@ -3154,6 +3154,7 @@ function dxPick(i) {
   q.value = x.name; if (f.elements.code) f.elements.code.value = x.code; UI.dirty = true;
   UI.dxres = []; $('#dx-res').hidden = true; q.setAttribute('aria-expanded', 'false'); $('#dx-hint').textContent = ''; f.elements.code?.focus();
 }
+function dxClose() { const box = $('#dx-res'); if (box) box.hidden = true; $('#dx-q')?.setAttribute('aria-expanded', 'false'); }
 function dxInit() { // an existing record with no code but a catalog name: suggest the code in the input only (stored on save)
   const q = $('#dx-q'); if (!q) return; const code = q.form.elements.code, x = q.value.trim() && dxExact(q.value);
   if (x && code && !code.value.trim()) { code.value = x.code; $('#dx-hint').textContent = 'הקוד הוצע מהקטלוג – אפשר למחוק'; }
@@ -3688,6 +3689,7 @@ const SUB = {
 };
 
 document.addEventListener('click', ev => {
+  if ($('#dx-res') && !ev.target.closest('#dx-q, #dx-res')) dxClose();
   const el = ev.target.closest('[data-act]'); if (!el) { if (!ev.target.closest('.gsearch')) $('#gres') && ($('#gres').hidden = true); return; }
   const stop = ev.target.closest('a[href],[data-stop]'); if (stop && stop !== el && el.contains(stop)) return;
   if (el.tagName === 'A') ev.preventDefault();
@@ -3718,7 +3720,8 @@ document.addEventListener('keydown', ev => {
     const items = $$('#dx-res [data-act="dx-pick"]'), open = !$('#dx-res').hidden && items.length;
     if (open && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) { ev.preventDefault(); UI.dxsel = Math.max(0, Math.min(items.length - 1, (UI.dxsel || 0) + (ev.key === 'ArrowDown' ? 1 : -1))); items.forEach((b, i) => b.setAttribute('aria-selected', String(i === UI.dxsel))); items[UI.dxsel].scrollIntoView({ block: 'nearest' }); return; }
     if (open && ev.key === 'Enter') { ev.preventDefault(); dxPick(UI.dxsel || 0); return; }
-    if (open && ev.key === 'Escape') { ev.preventDefault(); $('#dx-res').hidden = true; ev.target.setAttribute('aria-expanded', 'false'); return; }
+    if (open && ev.key === 'Escape') { ev.preventDefault(); dxClose(); return; }
+    if (open && ev.key === 'Tab') dxClose();
   }
   if (ev.key === 'Escape' && UI.modal) { closeModal(true); return; }
   if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'ז' || ev.code === 'KeyZ') && UI.lastMark && Date.now() <= UI.lastMark.until && !/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) { ev.preventDefault(); ACT['self-undo'](); return; }
