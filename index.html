@@ -3306,7 +3306,7 @@ function panelRefPick() {
   return `<div class="p-h"><div><h2>הפניה לבית חולים / טרם</h2><div class="meta">שלב 1 מתוך 2: בחרו דייר/ת</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
   <div class="p-b"><div class="q">${ic('search')}<input id="refpick-q" type="search" autocomplete="off" placeholder="חיפוש לפי שם, ת״ז או דירה" data-in="refpick" aria-label="חיפוש דייר/ת" autofocus></div>
   <p class="hint" id="refpick-none" hidden>לא נמצאו דיירים</p>
-  <ul class="refpick">${list.map(r => `<li data-k="${esc(norm(fullName(r)) + ' ' + norm(r.last_name + r.first_name) + ' ' + norm(r.demo_id) + ' @' + norm(r.apartment))}"><button class="btn" data-act="hosp-ref-res" data-rid="${r.id}"><b>${esc(fullName(r))}</b> <span class="muted">דירה <span class="num">${esc(r.apartment)}</span> · גיל <span class="num">${ageOf(r.birth_date)}</span></span>${allergyNames(r).length ? ' <span class="chip red">⚠ רגישות</span>' : ''}</button></li>`).join('')}</ul></div>`;
+  <ul class="refpick">${list.map(r => { const mb = moveBadge(r); /* PQ-3: in-effect movement chip (planned ones show none) */ return `<li data-k="${esc(norm(fullName(r)) + ' ' + norm(r.last_name + r.first_name) + ' ' + norm(r.demo_id) + ' @' + norm(r.apartment))}"><button class="btn" data-act="hosp-ref-res" data-rid="${r.id}"><b>${esc(fullName(r))}</b> <span class="muted">דירה <span class="num">${esc(r.apartment)}</span> · גיל <span class="num">${ageOf(r.birth_date)}</span></span>${mb ? ' ' + mb : ''}${allergyNames(r).length ? ' <span class="chip red">⚠ רגישות</span>' : ''}</button></li>`; }).join('')}</ul></div>`;
 }
 function refResSummary(r) {
   const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`, al = allergyNames(r);
