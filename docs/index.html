@@ -3103,8 +3103,8 @@ function viewMedicalFile() {
 /* referral letter: read-only side panel, printed through the same print-panel pattern as the incident report; settings are read at render time */
 /* shared letter header/footer: read S.settings at call time (never cached) */
 function letterHead(title) {
-  const st = S.settings, src = st.facility_logo || DEFAULT_FACILITY_LOGO;
-  return `<header class="lt-head"><div class="logo-plate"><img src="${esc(src)}" alt="לוגו המוסד"></div><div class="lt-fac"><h1>${esc(st.facility_name || FACILITY_DEFAULTS.facility_name)}</h1><div>${esc(st.facility_address || '—')} · <span class="lt-tel">טל׳ <span class="num">${esc(st.facility_phone || '—')}</span></span></div></div></header>
+  const st = S.settings, src = st.facility_logo || DEFAULT_FACILITY_LOGO, ph = String(st.facility_phone ?? '').trim();
+  return `<header class="lt-head"><div class="logo-plate"><img src="${esc(src)}" alt="לוגו המוסד"></div><div class="lt-fac"><h1>${esc(st.facility_name || FACILITY_DEFAULTS.facility_name)}</h1><div>${esc(st.facility_address || '—')}${ph ? ` · <span class="lt-tel">טל׳ <span class="num">${esc(ph)}</span></span>` : ''}</div></div></header>
     <h2 class="lt-title">${esc(title)}</h2>`;
 }
 const letterFoot = () => `<footer class="lt-foot">הודפס ${fDT(nowIso())} ע״י ${esc(uname(me().id))} · הוד קשר – הוד ירושלים · הדגמה – נתונים פיקטיביים</footer>`;
