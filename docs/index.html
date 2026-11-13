@@ -2050,7 +2050,10 @@ function saveMoveEdit(form) {
   }
   if (!e.start && !e.end && ['hospital', 'vacation', 'away'].includes(m.type) && startW) {
     const s0 = tm(startW), e0 = keys.includes('end') ? tm(nv.end) : m.end ? Date.parse(m.end) : Infinity;
-    if (S.movements.some(o => o.id !== m.id && o.resident_id === r.id && ['hospital', 'vacation', 'away'].includes(o.opens_state) && s0 < (o.end ? Date.parse(o.end) : Infinity) && Date.parse(o.start) < e0)) e.start = 'חופף לתנועה אחרת של הדייר/ת';
+    if (S.movements.some(o => o.id !== m.id && o.resident_id === r.id && ['hospital', 'vacation', 'away'].includes(o.opens_state) && s0 < (o.end ? Date.parse(o.end) : Infinity) && Date.parse(o.start) < e0)) {
+      const ov = 'חופף לתנועה אחרת של הדייר/ת', startChanged = keys.includes('start') && !sameDt('start'), endChanged = keys.includes('end') && !sameDt('end');
+      if (endChanged && !startChanged) e.end = ov; else if (startChanged && !endChanged) e.start = ov; else { e.start = ov; if (keys.includes('end')) e.end = ov; }
+    }
   }
   const prev = {}, next = {};
   for (const kk of keys) {
