@@ -235,6 +235,10 @@ input[data-date]{width:9.5em;direction:ltr;text-align:right}
 input[data-time]{width:5.2em;direction:ltr;text-align:right}
 .dt{display:flex;gap:6px}
 .fld .dt input{width:auto}
+/* UI-L1: date and time share the row equally but never shrink below their full text (dd/mm/yyyy, hh:mm); the time wraps under the date only when even that does not fit */
+.dt{flex-wrap:wrap}
+.fld .dt input[data-date]{flex:1 1 0;min-width:6.4em}
+.fld .dt input[data-time]{flex:1 1 0;min-width:4.2em}
 input[type=text],input[type=search],input[type=tel],input[type=email],input[type=number],input[type=date],input[type=datetime-local],input[type=time],input[type=password],select,textarea{min-height:40px;border:1px solid var(--line-2);background:var(--surface);border-radius:9px;padding:6px 10px;font-size:15.5px;max-width:100%}
 textarea{min-height:76px;resize:vertical;width:100%}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
