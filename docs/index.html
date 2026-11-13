@@ -2866,7 +2866,7 @@ function auditRows(r) {
   const adm = admissionOf(r); if (adm) add(adm.created_at || adm.start, adm.by, 'נוצר', 'קבלה לדיור', `כניסה לדיור ${fD(adm.start)}`, 'movements');
   for (const m of S.movements.filter(x => x.resident_id === r.id)) { // admission: only its corrections (its creation line is above)
     if (m.type !== 'admission') add(m.created_at || m.start, m.by, 'נוצר', 'תנועה', `${MT[m.type].name}${moveWhere(m)} · ${fDT(m.start)}`, 'movements');
-    if (m.end && MT[m.type].closer) add(m.end, m.closed_by, 'נסגר', 'תנועה', `${m.closed_type || MT[m.type].closer} · ${fDT(m.end)}`, 'movements');
+    if (m.end && MT[m.type].closer) add(m.end, m.closed_by, 'נסגר', 'תנועה', `${m.closed_type || MT[m.type].closer} · ${fDT(m.end)}${(m.history || []).some(h => h.kind === 'return') ? ' · שונו: הערה' : ''}`, 'movements');
     for (const h of (m.history || []).filter(x => x.kind === 'correction')) add(h.at, h.by, 'תוקן', 'תנועה', `סיבה: ${auditClip(h.reason, 60)} · שונו: ${Object.keys(h.prev || {}).map(k => MOVE_FIELD_LABEL[k] || k).join(', ')}`, 'movements');
   }
   for (const [sec, def] of Object.entries(MED_SECTIONS)) { if (!def.coll) continue;
