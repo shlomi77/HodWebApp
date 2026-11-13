@@ -2035,8 +2035,11 @@ function saveMoveEdit(form) {
   if (!d.reason || d.reason.length < 2) e.reason = 'כתבו את סיבת התיקון';
   const nv = {}; for (const kk of keys) nv[kk] = MOVE_DATE_KEYS.includes(kk) ? (d[kk] || '') : (d[kk] ?? '');
   const sameDt = kk => isoToWall(m[kk]) === nv[kk];
+  const openNow = !m.end && ['hospital', 'vacation', 'away'].includes(m.opens_state), startedSaved = Date.parse(m.start) <= now;
   if (keys.includes('start')) {
-    if (!nv.start) e.start = 'שדה חובה'; else if (tm(nv.start) > now + 36e5 * 24 * 30) e.start = 'תאריך רחוק מדי בעתיד';
+    if (!nv.start) e.start = 'שדה חובה';
+    else if (openNow && startedSaved && tm(nv.start) > now + 60000) e.start = 'לא ניתן לדחות את תחילת התנועה לעתיד אחרי שהתחילה';
+    else if (tm(nv.start) > now + 36e5 * 24 * 30) e.start = 'תאריך רחוק מדי בעתיד';
     else { const adm = admissionOf(r); if (adm && m.type !== 'admission' && tm(nv.start) < Date.parse(adm.start)) e.start = `התנועה לא יכולה להיות לפני הכניסה לדיור (${fD(adm.start)})`; }
   }
   if (keys.includes('hospital') && !nv.hospital) e.hospital = 'באשפוז חובה לבחור בית חולים';
