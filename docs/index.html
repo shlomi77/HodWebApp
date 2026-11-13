@@ -2361,6 +2361,8 @@ function panelNote(p) {
 function saveNote(form) {
   const d = readForm(form), e = {}; const r = res(d.resident_id) || (d.resident_q ? residentFromLabel(d.resident_q) : null);
   if (!d.text || d.text.length < 2) e.text = 'כתבו את תוכן הדיווח'; if (d.resident_q && !r) e.resident = 'בחרו דייר/ת מהרשימה או השאירו ריק';
+  const xn = byId(S.handover_notes, form.dataset.id) || byId(S.handover_notes, form.dataset.correct); // PK-L1: a gone resident may stay only if this note (or the one it corrects) already links them
+  if (r && isGone(r) && !(xn && xn.resident_id === r.id)) e.resident = `הדייר/ת מסומן/ת כ"${RES_STATUS[r.status]}"`;
   if (!showErrors(form, e)) return;
   const id = form.dataset.id, ws = workShiftAt();
   if (id) { const n = byId(S.handover_notes, id); if (Date.now() - Date.parse(n.at) > 15 * 60000) { toast('עברו 15 דקות – אפשר רק לכתוב תיקון'); return; } Object.assign(n, { text: d.text, resident_id: r?.id || null, unit_id: d.unit_id || null, subject: d.subject, needs_action: !!d.needs_action, assignee: d.needs_action ? d.assignee || null : null }); stamp(n); }
@@ -2444,6 +2446,8 @@ function panelCall(p) {
 function saveCall(form) {
   const d = readForm(form), e = {}, r = res(d.resident_id) || (d.resident_q ? residentFromLabel(d.resident_q) : null);
   if (d.resident_q && !r) e.resident = 'בחרו דייר/ת מהרשימה או השאירו ריק';
+  const xc = byId(S.service_calls, form.dataset.id); // PK-L1: current residents only, unless this call already links them
+  if (r && isGone(r) && !(xc && xc.resident_id === r.id)) e.resident = `הדייר/ת מסומן/ת כ"${RES_STATUS[r.status]}"`;
   if (!d.location) e.location = 'שדה חובה'; if (!d.category_id) e.category_id = 'בחרו קטגוריה'; if (!d.description || d.description.length < 3) e.description = 'תיאור של 3 תווים לפחות';
   if (!showErrors(form, e)) return;
   const k = cat(d.category_id), aptM = d.location.match(/(\d{3})/), unit = r ? unitOf(r) : aptM ? S.units.find(u => u.apartments.includes(aptM[1])) : null;
@@ -2554,6 +2558,8 @@ function saveEvent(form, submitter) {
   if (!d.description || d.description.length < 3) e.description = 'כתבו תיאור עובדתי קצר';
   if (go === 'report' && d.type_id === 'E_VIOLENCE') { if (!d.police) e.police = 'סמנו "דווח" או "לא דווח"'; else if (d.police === 'no' && !d.police_reason) e.police_reason = 'כתבו את סיבת אי-הדיווח'; }
   if (go === 'draft') { for (const k of Object.keys(e)) if (k !== 'type_id') delete e[k]; }
+  const xe = byId(S.events, form.dataset.id), goneR = ids.map(res).find(r => r && isGone(r) && !(xe && xe.resident_ids.includes(r.id))); // PK-L1: typed label or forged hidden id; drafts too
+  if (goneR && !e.residents) e.residents = `הדייר/ת מסומן/ת כ"${RES_STATUS[goneR.status]}"`;
   if (!showErrors(form, e)) return;
   const dk = d.occurred_at ? d.occurred_at.slice(0, 10) : today(), tm = v => v ? at(dk, v) : null;
   const notif = evType(d.type_id).notify.map(nn => ({ to: nn.to, done: !!d['ntf_' + nn.to], at: d['ntf_' + nn.to] ? (tm(d['ntft_' + nn.to]) || nowIso()) : null }));
@@ -3813,7 +3819,7 @@ function cancelEdit() {
 const IN = {
   gsearch: () => { UI.gsel = 0; renderGsearch(); },
   dx: () => { UI.dxsel = 0; dxRender(); },
-  rpick: el => { const w = el.closest('.rpick'); if (!w) return; if (w.dataset.multi !== '1') { rpParts(w).h.value = ''; if (w.dataset.onpick === 'call-res') callResFill(el.form, residentFromLabel(el.value)); } rpRender(w); },
+  rpick: el => { const w = el.closest('.rpick'); if (!w) return; if (w.dataset.multi !== '1') { rpParts(w).h.value = ''; if (w.dataset.onpick === 'call-res') { const r = residentFromLabel(el.value); if (r && !isGone(r)) callResFill(el.form, r); } } rpRender(w); },
   refpick: el => { const q = norm(el.value.trim()); let n = 0; for (const li of $$('#panel .refpick li')) { const k = li.dataset.k, ok = !q || k.includes(q); li.hidden = !ok; n += ok; } $('#refpick-none').hidden = !!n; },
   'round-q': el => { UI.f.round.q = el.value; renderMain(); },
   f: el => { let v = el.type === 'checkbox' ? el.checked : el.value; if (el.dataset.date != null) { if (v && !parseD(v)) { el.classList.add('inv'); return; } v = v ? parseD(v) : ''; } UI.f[el.dataset.view][el.dataset.k] = v; renderMain(); },
