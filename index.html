@@ -743,6 +743,7 @@ function seed() {
       else mkRes(u, apt, chance(.65) ? 'F' : 'M', SUR[(D.residents.length * 7 + i) % SUR.length], { lives_alone: true, arrangement: null });
     });
   }
+  byId(D.residents, 'R048').first_name = 'צפורה'; // KNOWN-4: avoid a duplicate display name with R026 (fictitious)
   D.residents.forEach((r, i) => { r.contacts.forEach((c, j) => { c.email = j === 0 && i % 5 === 0 ? `family${r.id.slice(1)}@example.com` : ''; c.guardian = j === 0 && (r.id === 'R010' || r.id === 'R033'); }); });
   D.preferences = [
     { id: 'PF1', resident_id: 'R009', type: 'no_check', from: addDays(today(), -10), to: null, reason: 'ביקש/ה לא לבדוק בסבבים (בתיאום עם המשפחה)', by: 'U7', at: ago(60 * 24 * 10) },
