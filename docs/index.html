@@ -3462,6 +3462,7 @@ function medField(fd, v, r) {
 function panelMedrec(p) {
   const def = MED_SECTIONS[p.sec]; if (!def || !may('clinical.view')) return null;
   const x = p.id && (S.clin[def.coll] || []).find(y => y.id === p.id), r = res(x ? x.resident_id : p.rid); if (!r || !may(def.write)) return null;
+  if (p.hosp && isGone(r)) return null; // HR-L2: no hospital-referral form for a left/deceased resident
   const corr = !!(p.correct && x && def.lock); if (x && def.lock && (!corr || x.superseded_by)) return null; // locked: only a correction of the newest version
   const hosp = !!(p.hosp && p.sec === 'referrals' && !x), v = x || { ...(def.defaults ? def.defaults(r) : {}), ...(hosp ? { ref_type: 'בית חולים', urgency: 'urgent' } : {}) };
   return `<div class="p-h"><div><h2>${hosp ? 'הפניה לבית חולים / טרם' : `${esc(def.name)} – ${corr ? 'תיקון' : x ? 'עריכה' : 'רשומה חדשה'}`}</h2><div class="meta">${esc(fullName(r))} · דירה ${esc(r.apartment)}${x ? ` · נרשם ע״י ${esc(uname(x.by))} ${fDT(x.created_at)}` : ''}</div></div>${p.sec === 'referrals' && x ? `<button type="button" class="btn sm" data-act="ref-print" data-id="${x.id}" title="הדפסת מכתב (הגרסה השמורה)">${ic('print')} הדפסה</button>` : ''}<button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
@@ -3480,6 +3481,7 @@ function saveMedrec(form) {
   if (x && def.lock && !corr) return toast('הרשומה נעולה אחרי השמירה. לשינוי לחצו "תיקון".');
   if (corr && (!x || !def.lock || x.superseded_by)) return toast('אפשר לתקן רק את הגרסה האחרונה של רשומה נעולה');
   const d = readForm(form), e = {};
+  if (form.dataset.sec === 'referrals' && !x && r && isGone(r)) return toast(`לא ניתן ליצור הפניה: הדייר/ת מסומן/ת כ"${RES_STATUS[r.status]}"`); // HR-L2: new referrals only; editing an existing one stays allowed
   if (corr && !d.correction_reason) e.correction_reason = 'שדה חובה';
   for (const fd of def.fields) {
     if (fd.type === 'custom') { if (fd.read) d[fd.k] = fd.read(form); continue; }
@@ -3733,7 +3735,7 @@ const ACT = {
   'medorder-update': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); const sel = medF().sel; if (sel.length > 1) return toast('לעדכון בחרו הוראה אחת בלבד'); openPanel(sel.length ? { type: 'medorder', id: sel[0] } : { type: 'medhandling', rid: el.dataset.rid }); },
   'intake-open': el => { if (!may('meds.run')) return toast(NO_PERM_ACT); const sel = medF().sel.filter(id => byId(S.med_orders, id)?.active); if (!sel.length) return toast('בחרו לפחות הוראה פעילה אחת לבדיקת נטילה'); openPanel({ type: 'intake', rid: el.dataset.rid, ids: sel }); },
   'hosp-ref': () => { if (!may('clinical.edit')) return toast(NO_PERM_ACT); openPanel({ type: 'refpick' }); },
-  'hosp-ref-res': el => { if (!may('clinical.edit')) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: 'referrals', rid: el.dataset.rid, hosp: 1 }); },
+  'hosp-ref-res': el => { if (!may('clinical.edit')) return toast(NO_PERM_ACT); const r = res(el.dataset.rid); if (!r) return; if (isGone(r)) return toast(`לא ניתן ליצור הפניה: הדייר/ת מסומן/ת כ"${RES_STATUS[r.status]}"`); openPanel({ type: 'medrec', sec: 'referrals', rid: el.dataset.rid, hosp: 1 }); },
   'medrec-new': el => { const def = MED_SECTIONS[el.dataset.sec]; if (!def || !may(def.write)) return toast(NO_PERM_ACT); openPanel({ type: 'medrec', sec: el.dataset.sec, rid: el.dataset.rid }); },
   'mtask-add': () => { $('#mtask-rows').insertAdjacentHTML('beforeend', $('#mtask-tpl').innerHTML); $('#mtask-rows [data-trow]:last-child input')?.focus(); },
   'mtask-done': el => { if (!may('clinical.edit')) { el.checked = !el.checked; return toast(NO_PERM_ACT); } const x = S.clin.meetings.find(y => y.id === el.dataset.id), t = x?.tasks[+el.dataset.i]; if (!t || x.superseded_by) return; // allowed on a locked meeting (D14), audited in task_log
