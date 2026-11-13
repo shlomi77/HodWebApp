@@ -435,7 +435,7 @@ tr.stopped td{opacity:.55}
 .letter{max-width:180mm;margin:0 auto;background:#fff;color:#111;padding:16px 18px;border-radius:10px;font-size:14px;line-height:1.5;page:letter}
 .letter h1{margin:0;font-size:22px}.letter h2.lt-title{margin:14px 0 8px;font-size:18px;text-align:center;border-block:1px solid #999;padding-block:4px}
 .letter h3{margin:12px 0 4px;font-size:14px;color:#444}
-.lt-head{display:flex;gap:14px;align-items:center}.lt-fac{min-width:0}.lt-fac .num{white-space:nowrap}
+.lt-head{display:flex;gap:14px;align-items:center}.lt-fac{min-width:0}.lt-fac .num{white-space:nowrap}.lt-tel{white-space:nowrap}
 .lt-grid{display:grid;grid-template-columns:max-content 1fr;gap:3px 14px;margin:0}.lt-grid dt{color:#555}.lt-grid dd{margin:0}
 .lt-urg{border:1px solid #999;background:#fff;color:#111}.lt-urg.hi{font-weight:800;border-color:#b00020;color:#b00020}
 .letter .reason{font-size:1.15em;font-weight:700;white-space:pre-wrap}.lt-result{margin-top:6px}
@@ -3104,7 +3104,7 @@ function viewMedicalFile() {
 /* shared letter header/footer: read S.settings at call time (never cached) */
 function letterHead(title) {
   const st = S.settings, src = st.facility_logo || DEFAULT_FACILITY_LOGO;
-  return `<header class="lt-head"><div class="logo-plate"><img src="${esc(src)}" alt="לוגו המוסד"></div><div class="lt-fac"><h1>${esc(st.facility_name || FACILITY_DEFAULTS.facility_name)}</h1><div>${esc(st.facility_address || '—')} · טל׳ <span class="num">${esc(st.facility_phone || '—')}</span></div></div></header>
+  return `<header class="lt-head"><div class="logo-plate"><img src="${esc(src)}" alt="לוגו המוסד"></div><div class="lt-fac"><h1>${esc(st.facility_name || FACILITY_DEFAULTS.facility_name)}</h1><div>${esc(st.facility_address || '—')} · <span class="lt-tel">טל׳ <span class="num">${esc(st.facility_phone || '—')}</span></span></div></div></header>
     <h2 class="lt-title">${esc(title)}</h2>`;
 }
 const letterFoot = () => `<footer class="lt-foot">הודפס ${fDT(nowIso())} ע״י ${esc(uname(me().id))} · הוד קשר – הוד ירושלים · הדגמה – נתונים פיקטיביים</footer>`;
