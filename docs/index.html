@@ -3298,7 +3298,7 @@ function refBackground(r) {
   const dx = clinOf('diagnoses', r.id).filter(x => x.status === 'active' && !x.superseded_by).map(x => x.diagnosis + (x.code ? ` (${x.code})` : ''));
   const meds = S.med_orders.filter(o => o.resident_id === r.id && o.active).map(o => o.drug + (may('meds.view') && o.dose ? ' ' + o.dose : '') + (o.prn ? ' (לפי הצורך)' : ''));
   const al = allergyNames(r);
-  return `אבחנות פעילות: ${dx.length ? dx.join(', ') : 'לא רשומות'}\nתרופות: ${meds.length ? meds.join(', ') : 'אין הוראות פעילות'}\nרגישויות: ${al.length ? al.join(', ') : 'אין רגישויות ידועות'}\nמצב תפקודי: ${nursingNow(r) || '—'}`;
+  return `אבחנות פעילות: ${dx.length ? dx.join(', ') : 'לא רשומות'}\nתרופות: ${meds.length ? meds.join(', ') : 'אין הוראות פעילות'}\nרגישויות: ${al.length ? al.join(', ') : 'לא תועדו רגישויות'}\nמצב תפקודי: ${nursingNow(r) || '—'}`;
 }
 function panelRefPick() {
   if (!may('clinical.edit')) return null;
@@ -3319,7 +3319,7 @@ function refLetter(x) {
     ${letterHead('מכתב הפניה')}
     <section><h3>פרטי הדייר/ת</h3><dl class="lt-grid">${row('שם מלא', `<b>${v(fullName(r))}</b>`)}${row('מזהה הדגמה', `<span class="num">${v(r.demo_id)}</span>`)}${row('מגדר', r.gender === 'F' ? 'נקבה' : 'זכר')}
       ${row('תאריך לידה', `<span class="num">${fD(r.birth_date)}</span> (גיל <span class="num">${ageOf(r.birth_date)}</span>)`)}${row('דירה', `<span class="num">${v(r.apartment)}</span>`)}${row('מיקום', `קומה <span class="num">${esc(u.floor)}</span> · בניין ${esc(u.building)}`)}
-      ${row('קופ״ח', v(r.medical_fund))}${row('טלפון', `<span class="num">${v(r.phone)}</span>`)}${row('רגישויות', al.length ? esc(al.join(', ')) : 'אין רגישויות ידועות')}</dl></section>
+      ${row('קופ״ח', v(r.medical_fund))}${row('טלפון', `<span class="num">${v(r.phone)}</span>`)}${row('רגישויות', al.length ? esc(al.join(', ')) : 'לא תועדו רגישויות')}</dl></section>
     <section><h3>פרטי ההפניה</h3><dl class="lt-grid">${row('תאריך', `<span class="num">${fD(x.at)}</span>`)}${row('סוג', v(x.ref_type))}${row('הפניה אל', `<b>${v(x.target)}</b>`)}${row('רופא/ה מפנה', v(x.doctor))}
       ${row('דחיפות', `<span class="chip lt-urg${x.urgency === 'normal' ? '' : ' hi'}">${esc(REFERRAL_URGENCY[x.urgency] || '—')}</span>`)}${row('סטטוס', esc(REFERRAL_STATUS[x.status] || '—'))}${x.appointment ? row('מועד התור', `<span class="num">${fDT(x.appointment)}</span>`) : ''}</dl>
       <div class="lt-reason"><h3>סיבת ההפניה</h3><div class="reason">${v(x.reason)}</div></div>
