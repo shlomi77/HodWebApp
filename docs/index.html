@@ -561,6 +561,10 @@ tr.stopped td{opacity:.55}
   table{font-size:10.5pt}
   th{background:#eee;color:#000;position:static}
   body.print-summary main#main > :not(.summary-wrap){display:none!important}
+  html:has(body.print-summary),body.print-summary{height:auto} /* PR-L1: no screen-height shell → no blank trailing page */
+  body.print-summary #app{min-height:0;display:block}
+  body.print-summary .summary-wrap > :last-child{margin-bottom:0}
+  body.print-summary .summary-wrap{break-after:avoid}
   body.print-panel #app{display:none!important}
   body.print-panel #panel{display:flex!important;position:static;width:auto;box-shadow:none;border:0}
   body.print-panel #panel .p-b{overflow:visible}
