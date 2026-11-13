@@ -1126,7 +1126,7 @@ function ensureSettingsDefaults(st) { st.settings ||= {}; for (const k of Object
 /* ---------- storage ---------- */
 let S = null;
 function load() {
-  try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const d = JSON.parse(raw); if (d && d.version === SCHEMA_VERSION) { S = d; for (const k of ASMT_IDS) S.clin[k] ||= []; ensureSettingsDefaults(S); return; } } } catch (e) { /* fall through to reseed */ }
+  try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const d = JSON.parse(raw); if (d && d.version === SCHEMA_VERSION) { S = d; for (const k of ASMT_IDS) S.clin[k] ||= []; ensureSettingsDefaults(S); applyDueMovements(); return; } } } catch (e) { /* fall through to reseed */ }
   reseed();
 }
 function reseed() { S = seed(); seedActivity(); seedControlledCounts(); save(); }
@@ -1195,6 +1195,9 @@ const unitOf = r => byId(S.units, r.unit_id) || { building: '?', floor: '?', lab
 const fullName = r => r ? `${r.first_name} ${r.last_name}` : '—';
 const g = (r, m, f) => r && r.gender === 'F' ? f : m;
 const openMove = rid => S.movements.find(m => m.resident_id === rid && !m.end && ['hospital', 'vacation', 'away'].includes(m.opens_state));
+const moveStarted = m => Date.parse(m.start) <= Date.now();
+const isPlannedMove = m => !moveStarted(m) && (!m.end || ['left', 'deceased'].includes(m.opens_state));
+const awayMove = rid => { const m = openMove(rid); return m && moveStarted(m) ? m : null; }; // M-2: in effect = open AND started
 function activePref(rid, dk = today()) { return S.preferences.find(p => p.resident_id === rid && p.type === 'no_check' && p.from <= dk && (!p.to || p.to >= dk)); }
 const isGone = r => ['left', 'deceased'].includes(r.status);
 const admissionOf = r => r && S.movements.find(m => m.resident_id === r.id && m.type === 'admission');
@@ -1289,7 +1292,7 @@ function avColor(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.char
 const avatar = (r, cls = '') => `<span class="av ${cls}" style="background:${avColor(r.id)}" aria-hidden="true">${esc((r.first_name[0] || '') + (r.last_name[0] || ''))}</span>`;
 function moveBadge(r) {
   if (r.status === 'left') return '<span class="chip">עזב</span>'; if (r.status === 'deceased') return '<span class="chip">נפטר</span>';
-  const m = openMove(r.id); if (!m) return '';
+  const m = awayMove(r.id); if (!m) return '';
   const over = m.expected_return && Date.parse(m.expected_return) < Date.now();
   return `<span class="chip ${m.opens_state === 'hospital' ? 'red' : 'vio'}" title="מאז ${fDT(m.start)}">${esc(MT[m.type].name)}${over ? ' · באיחור' : ''}</span>`;
 }
@@ -1408,6 +1411,7 @@ function keepFocus(fn) {
 let _shellUser = null;
 function render() {
   if (!me()) { _shellUser = null; document.body.classList.remove('panel-open'); $('#panel').hidden = true; $('#app').innerHTML = viewLogin(); setTimeout(() => $('#pin')?.focus(), 0); return; }
+  if (applyDueMovements()) save();
   if (_shellUser !== me().id || !$('#main')) { $('#app').innerHTML = viewShell(); _shellUser = me().id; measureTop(); }
   renderNav(); renderMain(); renderPanel(); tick();
 }
@@ -1547,7 +1551,7 @@ function navBadge(id) {
   if (id === 'handover') { const c = unreadNotes().length; return c ? `<span class="badge" title="דיווחים שלא נקראו">${c}</span>` : ''; }
   if (id === 'round') { const rd = currentRound(false); if (!rd) return ''; const c = rd.entries.filter(e => e.status === 'pending').length; return rd.status === 'open' && c ? `<span class="badge soft">${c}</span>` : ''; }
   if (id === 'calls') { const c = S.service_calls.filter(x => callOverdue(x) && (u.role !== 'maintenance' || x.handler === u.id)).length; return c ? `<span class="badge" title="קריאות בחריגה מהיעד">${c}</span>` : ''; }
-  if (id === 'movements') { const c = S.movements.filter(m => !m.end && m.expected_return && Date.parse(m.expected_return) < Date.now()).length; return c ? `<span class="badge" title="באיחור בחזרה">${c}</span>` : ''; }
+  if (id === 'movements') { const c = S.movements.filter(m => !m.end && m.expected_return && Date.parse(m.expected_return) < Date.now() && moveStarted(m)).length; return c ? `<span class="badge" title="באיחור בחזרה">${c}</span>` : ''; }
   if (id === 'events' && may('events.review')) { const c = S.events.filter(e => e.status === 'reported').length; return c ? `<span class="badge" title="ממתינים לבדיקת מנהל">${c}</span>` : ''; }
   return '';
 }
@@ -1607,7 +1611,7 @@ function openResident(id, tab) {
    ================================================================ */
 function exclusionReason(r) {
   if (isGone(r)) return RES_STATUS[r.status];
-  const m = openMove(r.id); if (m) return MT[m.type].name + (m.hospital ? ` – ${m.hospital}` : m.destination ? ` – ${m.destination}` : '');
+  const m = awayMove(r.id); if (m) return MT[m.type].name + (m.hospital ? ` – ${m.hospital}` : m.destination ? ` – ${m.destination}` : '');
   const p = activePref(r.id); if (p) return 'העדפה: ' + p.reason;
   return null;
 }
@@ -1629,6 +1633,25 @@ function checkRoundDone(rd, silent) {
   const pend = rd.entries.some(e => e.status === 'pending');
   if (rd.status === 'open' && !pend) { rd.status = 'completed'; rd.completed_at = nowIso(); if (!silent) toast('כל הדיירים אותרו – הסבב הושלם ✓'); }
   else if (rd.status === 'completed' && pend) { rd.status = 'open'; rd.completed_at = null; }
+}
+// M-2: movements whose start time has passed take effect without user action; planned ones do not. syncRounds itself is unchanged (CF-03 held).
+function applyDueMovements() {
+  const touched = new Set(); let changed = false;
+  const live = rd => rd.status !== 'closed_manually' && rd.date >= addDays(today(), -1);
+  for (const r of S.residents) {
+    const mine = S.movements.filter(m => m.resident_id === r.id);
+    const gone = mine.filter(m => ['left', 'deceased'].includes(m.opens_state) && moveStarted(m)).sort((a, b) => Date.parse(b.start) - Date.parse(a.start))[0];
+    const laterThanGone = gone && mine.some(m => m !== gone && Date.parse(m.start) > Date.parse(gone.start)); // e.g. a re-admission after leaving (Date.parse: starts carry +02:00/+03:00 offsets)
+    const away = awayMove(r.id);
+    if (gone && !laterThanGone && !isGone(r)) { r.status = gone.opens_state; touched.add(r.id); changed = true; }
+    else if (!isGone(r) && away && ['hospital', 'vacation'].includes(away.opens_state) && r.status === 'active') { r.status = away.opens_state; touched.add(r.id); changed = true; }
+    else if (!isGone(r) && away && S.rounds.some(rd => live(rd) && rd.entries.some(e => e.resident_id === r.id && e.status === 'pending'))) touched.add(r.id); // away type, or status already set
+    // D13 self-repair: status set early by a movement that is still planned
+    const early = mine.find(m => isPlannedMove(m) && m.opens_state === r.status);
+    if (early && !(away && away.opens_state === r.status) && !(gone && gone.opens_state === r.status)) { r.status = 'active'; changed = true; }
+  }
+  for (const rid of touched) { syncRounds(rid); changed = true; }
+  return changed;
 }
 /* keep open rounds in sync with movements / preferences */
 function syncRounds(rid) {
@@ -1775,7 +1798,7 @@ function viewResidents() {
 
 /* drawer: quick look from any list */
 function panelResident(p) {
-  const r = res(p.id); if (!r) return null; const u = unitOf(r), m = openMove(r.id);
+  const r = res(p.id); if (!r) return null; const u = unitOf(r), m = openMove(r.id), a = awayMove(r.id);
   const head = `<div class="p-h">${avatar(r, '')}<div><h2>${esc(fullName(r))}</h2><div class="meta">דירה ${esc(r.apartment)} · ${esc(u.label)}</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>`;
   if (!may('res.view')) return head + `<div class="p-b"><p class="note-inline info">בתפקיד אחזקה מוצגים מיקום הדירה בלבד.</p><dl class="kv"><dt>דירה</dt><dd>${esc(r.apartment)}</dd><dt>בניין</dt><dd>${u.building}</dd><dt>קומה</dt><dd>${u.floor}</dd></dl>${may('calls.create') || may('calls.handle') ? '' : ''}</div>`;
   const rd = currentRound(false), e = rd && rd.entries.find(x => x.resident_id === r.id);
@@ -1785,7 +1808,7 @@ function panelResident(p) {
     ${e ? `<div class="p-sec"><h3>${esc(roundName(rd))}</h3>${e.status === 'located' ? `<span class="chip ok">${g(r, 'אותר', 'אותרה')} · ${METHOD[e.method]} · ${fT(e.at)}</span>` : e.status === 'excluded' ? `<span class="chip vio">לא לאיתור: ${esc(e.reason)}</span>` : '<span class="chip blue">טרם אותר</span>'}</div>` : ''}
     <div class="actions"><a class="btn pri" href="#/resident/${r.id}">פתח תיק דייר</a>${r.phone ? `<a class="btn" href="tel:${esc(r.phone.replace(/-/g, ''))}">${ic('phone')} ${esc(r.phone)}</a>` : ''}</div>
     <div class="actions">${may('mov.create') && !m && !isGone(r) ? `<button class="btn sm" data-act="new-move" data-rid="${r.id}">פתח תנועה</button>` : ''}${may('calls.create') ? `<button class="btn sm" data-act="new-call" data-rid="${r.id}">פתח קריאת שירות</button>` : ''}<button class="btn sm" data-act="new-event" data-rid="${r.id}">דווח אירוע חריג</button></div>
-    ${m ? `<div class="p-sec"><h3>תנועה פתוחה</h3><div class="card pad"><b>${esc(MT[m.type].name)}</b>${m.hospital ? ' – ' + esc(m.hospital) : m.destination ? ' – ' + esc(m.destination) : ''}<br><span class="muted">מאז ${fDT(m.start)}${m.expected_return ? ` · חזרה צפויה ${fDT(m.expected_return)}` : ''}</span>${may('mov.create') ? `<div style="margin-top:8px"><button class="btn sm ok" data-act="move-return" data-id="${m.id}">חזר/ה (${esc(MT[m.type].closer)})</button></div>` : ''}</div></div>` : ''}
+    ${a ? `<div class="p-sec"><h3>תנועה פתוחה</h3><div class="card pad"><b>${esc(MT[a.type].name)}</b>${a.hospital ? ' – ' + esc(a.hospital) : a.destination ? ' – ' + esc(a.destination) : ''}<br><span class="muted">מאז ${fDT(a.start)}${a.expected_return ? ` · חזרה צפויה ${fDT(a.expected_return)}` : ''}</span>${may('mov.create') ? `<div style="margin-top:8px"><button class="btn sm ok" data-act="move-return" data-id="${a.id}">חזר/ה (${esc(MT[a.type].closer)})</button></div>` : ''}</div></div>` : ''}
     <div class="p-sec"><h3>אנשי קשר <a href="#/resident/${r.id}/contacts">לכל אנשי הקשר</a></h3>${r.contacts.length ? r.contacts.map(c => `<div class="actions" style="justify-content:space-between;border-top:1px dashed var(--line);padding:4px 0"><span><b>${esc(c.name)}</b> <span class="muted">${esc(c.relation)}${c.guardian ? ' · אפוטרופוס' : ''}${c.is_proxy ? ' · מיופה כוח' : ''}${c.notify_first ? ' · איש קשר ראשי' : ''}</span></span><a class="num" href="tel:${esc(c.phone.replace(/-/g, ''))}">${esc(c.phone)}</a></div>`).join('') : '<span class="muted">אין אנשי קשר</span>'}</div>
     <div class="p-sec"><h3>דיווחי משמרת אחרונים <a href="#/resident/${r.id}/notes">לכל הדיווחים</a></h3>${notes.length ? notes.map(n => `<div class="card pad" style="margin-bottom:6px"><small class="muted">${fDT(n.at)} · ${esc(uname(n.by))} · ${esc(n.subject)}</small><div>${esc(n.text)}</div></div>`).join('') : '<span class="muted">אין דיווחי משמרת</span>'}</div>
     <div class="p-sec"><h3>קישורים לתיק</h3><div class="actions">${fileTabs(r).map(t => `<a class="btn sm ghost" href="#/resident/${r.id}/${t.id}">${t.name}</a>`).join('')}</div></div>
@@ -1806,7 +1829,7 @@ const TAB_EDIT = { personal: 'res.edit', contacts: 'res.edit', social: 'social.e
 function viewResidentFile() {
   const ctx = fileCtx(), r = res(ctx.rid); if (!r) return empty('הדייר לא נמצא', 'ייתכן שהקישור ישן או שהנתונים אופסו.');
   const tabs = fileTabs(r).filter(t => !ctx.cat || CAT_SECTIONS[ctx.cat].includes(t.id)), tab = tabs.find(t => t.id === ctx.tab)?.id || tabs[0]?.id || 'personal';
-  const editing = UI.edit && UI.edit.rid === r.id && UI.edit.tab === tab, u = unitOf(r), m = openMove(r.id);
+  const editing = UI.edit && UI.edit.rid === r.id && UI.edit.tab === tab, u = unitOf(r), m = openMove(r.id), a = awayMove(r.id);
   const body = { personal: tabPersonal, contacts: tabContacts, contactlog: tabContactLog, movements: tabResMovements, social: tabSocial, benefits: tabBenefits, notes: tabResNotes, events: tabResEvents, nursing: tabNursing }[tab](r, editing);
   return `${UI.dirtyWarn ? `<div class="dirty-bar note-inline red" role="alert">יש שינויים שלא נשמרו. <button class="btn sm ok" data-act="file-save-dirty">שמירה</button> <button class="btn sm" data-act="file-discard">ביטול השינויים</button></div>` : ''}
   <div class="card">
@@ -1821,7 +1844,7 @@ function viewResidentFile() {
         ${may('calls.create') ? `<button class="btn" data-act="new-call" data-rid="${r.id}">פתח קריאת שירות</button>` : ''}
         <button class="btn" data-act="new-event" data-rid="${r.id}">דווח אירוע חריג</button>
         ${may('mov.create') && !m && !isGone(r) ? `<button class="btn" data-act="new-move" data-rid="${r.id}">פתח תנועה</button>` : ''}
-        ${may('mov.create') && m ? `<button class="btn pri" data-act="move-return" data-id="${m.id}">${ic('move')} ${esc(MT[m.type].closer)}</button>` : ''}
+        ${may('mov.create') && a ? `<button class="btn pri" data-act="move-return" data-id="${a.id}">${ic('move')} ${esc(MT[a.type].closer)}</button>` : ''}
       </div>
     </div>
     <nav class="ftabs" aria-label="לשוניות תיק">${tabs.map(t => `<a href="${fileHref(ctx, r.id, t.id)}" ${t.id === tab ? 'aria-current="page"' : ''}>${t.name}</a>`).join('')}</nav>
@@ -2063,23 +2086,24 @@ function saveAdmissionDate(id) {
 function movementTable(list, withRes = true, fileRes = null) {
   if (!list.length) return empty('אין תנועות להצגה', '');
   return `<div class="tbl"><table><thead><tr>${withRes ? '<th>דייר</th><th>דירה</th>' : ''}<th>סוג</th><th>יעד</th><th>התחלה</th><th>חזרה צפויה</th><th>סיום</th><th>נרשם ע״י</th><th></th></tr></thead><tbody>
-  ${list.map(m => { const r = res(m.resident_id), over = !m.end && m.expected_return && Date.parse(m.expected_return) < Date.now(), closable = !m.end && MT[m.type].closer && may('mov.create'), editBtn = may('mov.create') ? `<button class="btn sm" data-act="move-edit" data-id="${m.id}">עריכה</button>` : '', corrected = (m.history || []).some(x => x.kind === 'correction') ? ' <span class="chip">תוקן</span>' : '';
+  ${list.map(m => { const r = res(m.resident_id), over = !m.end && m.expected_return && Date.parse(m.expected_return) < Date.now() && moveStarted(m), closable = !m.end && MT[m.type].closer && may('mov.create') && moveStarted(m), editBtn = may('mov.create') ? `<button class="btn sm" data-act="move-edit" data-id="${m.id}">עריכה</button>` : '', corrected = (m.history || []).some(x => x.kind === 'correction') ? ' <span class="chip">תוקן</span>' : '';
     if (m.type === 'admission') return `<tr>${withRes ? `<td><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))}</button></td><td class="n">${esc(r.apartment)}</td>` : ''}
     <td><span class="chip ok">כניסה לדיור</span>${corrected}</td><td>${esc(m.note || '—')}${moveHistory(m)}</td><td class="n">${fD(m.start)}</td><td class="n">—</td><td class="n">—</td><td>${esc(uname(m.by))}</td><td>${admissionEditCell(m, fileRes)}${editBtn}</td></tr>`;
     return `<tr class="${over ? 'overdue' : ''}">${withRes ? `<td><button class="linkbtn" data-act="drawer" data-id="${r.id}">${esc(fullName(r))}</button></td><td class="n">${esc(r.apartment)}</td>` : ''}
     <td><span class="chip ${m.opens_state === 'hospital' ? 'red' : ['left', 'deceased'].includes(m.opens_state) ? '' : 'vio'}">${esc(MT[m.type].name)}</span>${corrected}</td><td>${esc(m.hospital || m.destination || '—')}${m.note ? `<br><small class="muted">${esc(m.note)}</small>` : ''}${moveHistory(m)}</td>
     <td class="n">${fDT(m.start)}</td><td class="n">${m.expected_return ? fDT(m.expected_return) + (over ? ' <b style="color:var(--danger)">באיחור</b>' : '') : '—'}</td>
-    <td class="n">${m.end ? `${fDT(m.end)}${m.closed_type ? `<br><small class="muted">${esc(m.closed_type)}</small>` : ''}` : '<span class="chip warn">פתוחה</span>'}</td><td>${esc(uname(m.by))}</td>
+    <td class="n">${isPlannedMove(m) ? `<span class="chip" title="תחילה ${fDT(m.start)}">מתוכננת</span>` : m.end ? `${fDT(m.end)}${m.closed_type ? `<br><small class="muted">${esc(m.closed_type)}</small>` : ''}` : '<span class="chip warn">פתוחה</span>'}</td><td>${esc(uname(m.by))}</td>
     <td>${closable ? `<button class="btn sm ok" data-act="move-return" data-id="${m.id}">חזר/ה</button> ` : ''}${editBtn}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 function viewMovements() {
   const f = F('movements', { type: '', from: '', to: '', open: false, q: '' });
-  const open = S.movements.filter(m => !m.end && ['hospital', 'vacation', 'away'].includes(m.opens_state)).sort((a, b) => a.start.localeCompare(b.start));
+  const open = S.movements.filter(m => !m.end && ['hospital', 'vacation', 'away'].includes(m.opens_state) && moveStarted(m)).sort((a, b) => a.start.localeCompare(b.start));
+  const planned = S.movements.filter(isPlannedMove).sort((a, b) => a.start.localeCompare(b.start));
   const hist = S.movements.filter(m => (!f.type || m.type === f.type) && (!f.open || !m.end) && (!f.from || dkey(m.start) >= f.from) && (!f.to || dkey(m.start) <= f.to)
     && (!f.q || (r => norm(fullName(r)).includes(norm(f.q)) || norm(r.apartment).startsWith(norm(f.q)))(res(m.resident_id)))).sort((a, b) => b.start.localeCompare(a.start));
   return `<div class="ph"><h1>תנועות</h1><span class="sp"></span>${may('mov.create') ? `<button class="btn pri" data-act="new-move">${ic('plus')} תנועה חדשה</button>` : ''}</div>
   <h2 style="font-size:19px;margin:0 0 8px">נמצאים מחוץ לבית <span class="chip">${open.length}</span></h2>
-  ${movementTable(open)}
+  ${movementTable(open)}${planned.length ? `<h2 style="font-size:19px;margin:16px 0 8px">תנועות מתוכננות <span class="chip">${planned.length}</span></h2>${movementTable(planned)}` : ''}
   <h2 style="font-size:19px;margin:22px 0 8px">היסטוריית תנועות</h2>
   <div class="filters">
     <div class="q">${ic('search')}<input id="mv-q" type="search" placeholder="שם או דירה" value="${esc(f.q)}" data-in="f" data-view="movements" data-k="q" aria-label="חיפוש"></div>
@@ -2127,8 +2151,9 @@ function saveMove(form) {
     hospital: d.hospital || '', destination: d.destination || '', note: d.note, by: me().id }, true);
   if (isAdm) m.end = start;
   S.movements.push(m);
-  if (['hospital', 'vacation'].includes(t.opens_state)) r.status = t.opens_state; if (gone) r.status = t.opens_state; stamp(r);
-  syncRounds(r.id); closePanel(); refresh(); toast(`נרשמה ${t.name} ל${fullName(r)}${gone || isAdm ? '' : ' – הוצא/ה מהסבב הפתוח'}`);
+  const started = Date.parse(start) <= Date.now(); // M-2: a planned movement takes effect only from its start (applyDueMovements)
+  if (started) { if (['hospital', 'vacation'].includes(t.opens_state)) r.status = t.opens_state; if (gone) r.status = t.opens_state; } stamp(r);
+  if (started) syncRounds(r.id); closePanel(); refresh(); toast(started ? `נרשמה ${t.name} ל${fullName(r)}${gone || isAdm ? '' : ' – הוצא/ה מהסבב הפתוח'}` : `נרשמה ${t.name} ל${fullName(r)} – מתוכננת ל־${fDT(start)}`);
 }
 function closeMove(m, endIso, note) { // only called from saveMoveReturn
   const r = res(m.resident_id);
@@ -2591,13 +2616,13 @@ function viewMeds() {
   const orders = S.med_orders.filter(o => o.active && !o.prn && o.times.some(t => medRoundOf(t).id === f.round));
   const byRes = {}; for (const o of orders) { const r = res(o.resident_id); if (!r || isGone(r)) continue; (byRes[r.id] ||= []).push(o); }
   let total = 0, given = 0, ng = 0;
-  for (const rid of Object.keys(byRes)) { if (openMove(rid)) continue; for (const o of byRes[rid]) for (const t of o.times) { if (medRoundOf(t).id !== f.round) continue; total++; const a = doseRec(o.id, d, t); if (a?.status === 'given') given++; if (a?.status === 'not_given') ng++; } }
+  for (const rid of Object.keys(byRes)) { if (awayMove(rid)) continue; for (const o of byRes[rid]) for (const t of o.times) { if (medRoundOf(t).id !== f.round) continue; total++; const a = doseRec(o.id, d, t); if (a?.status === 'given') given++; if (a?.status === 'not_given') ng++; } }
   // D9: PRN orders show in every round, are hidden for away residents and are not counted in "ניתנו X מתוך Y"
-  const prnByRes = {}; for (const o of S.med_orders.filter(x => x.active && x.prn)) { const r = res(o.resident_id); if (!r || isGone(r) || openMove(r.id)) continue; (prnByRes[r.id] ||= []).push(o); }
+  const prnByRes = {}; for (const o of S.med_orders.filter(x => x.active && x.prn)) { const r = res(o.resident_id); if (!r || isGone(r) || awayMove(r.id)) continue; (prnByRes[r.id] ||= []).push(o); }
   const ids = [...new Set([...Object.keys(byRes), ...Object.keys(prnByRes)])].map(res).filter(r => !f.q || norm(fullName(r)).includes(norm(f.q)) || norm(r.apartment).startsWith(norm(f.q))).sort(sortApt);
   const groups = {}; for (const r of ids) (groups[r.unit_id] ||= []).push(r);
   const html = Object.entries(groups).map(([uid2, rs]) => `<div class="floor-h">${esc(byId(S.units, uid2).label)}</div><div class="card">${rs.map(r => {
-    const m = openMove(r.id), away = !!m;
+    const m = awayMove(r.id), away = !!m;
     const doses = (byRes[r.id] || []).flatMap(o => o.times.filter(t => medRoundOf(t).id === f.round).map(t => ({ o, t }))).sort((a, b) => a.t.localeCompare(b.t));
     const prn = !away && prnByRes[r.id] ? `<div class="prn"><span class="chip acc">לפי הצורך</span>${prnByRes[r.id].map(o => { const s = prnState(o);
       return `<div class="dose"><span class="dn">${esc(o.drug)} <small>${esc(o.dose)} · ${esc(o.route)} · ${prnRules(o)}</small> ${catFlagChips(drugOf(o), false)}</span><span class="hint">${prnLastTxt(s)}</span>${canRun ? `<button class="btn sm" data-act="prn-give" data-o="${o.id}">מתן</button>` : ''}</div>`; }).join('')}</div>` : '';
@@ -2641,7 +2666,7 @@ function savePrnGive(form) {
   if (!may('meds.run')) return toast(NO_PERM_ACT);
   const o = byId(S.med_orders, form.dataset.o), r = o && res(o.resident_id), d = readForm(form), e = {}; if (!r || !o.prn || !o.active) return;
   if (!d.indication_text) e.indication_text = 'כתבו התוויה';
-  else if (openMove(r.id) || isGone(r)) e.prn = 'הדייר/ת לא נמצא/ת בבית – אין מתן';
+  else if (awayMove(r.id) || isGone(r)) e.prn = 'הדייר/ת לא נמצא/ת בבית – אין מתן';
   else { const s = prnState(o); if (s.err) e.prn = s.err; } // D10: too early / over the 24 h max → blocked
   if (!showErrors(form, e)) return;
   const g = giveGate(o, !!d.allergy_ack, extra => { // D6 + R11 apply to PRN gives too
@@ -2871,7 +2896,7 @@ const itemsTxt = (x, items) => items.filter(it => x[it.k] !== '' && x[it.k] != n
 const MED_SECTIONS = {
   personal: { name: 'פרטים אישיים', icon: 'user', render: (r, ed) => tabPersonal(r, ed), actions: (r, ed) => fileEditActions('personal', ed) },
   contacts: { name: 'אנשי קשר', icon: 'phone', render: (r, ed) => tabContacts(r, ed), actions: (r, ed) => fileEditActions('contacts', ed) },
-  movements: { name: 'תנועות מטופל', icon: 'move', render: r => tabResMovements(r), actions: r => { const m = openMove(r.id); return may('mov.create') && m ? `<button class="btn pri" data-act="move-return" data-id="${m.id}">${ic('move')} ${esc(MT[m.type].closer)}</button>` : may('mov.create') && !isGone(r) ? `<button class="btn pri" data-act="new-move" data-rid="${r.id}">${ic('plus')} פתח תנועה</button>` : ''; } },
+  movements: { name: 'תנועות מטופל', icon: 'move', render: r => tabResMovements(r), actions: r => { const m = awayMove(r.id); return may('mov.create') && m ? `<button class="btn pri" data-act="move-return" data-id="${m.id}">${ic('move')} ${esc(MT[m.type].closer)}</button>` : may('mov.create') && !openMove(r.id) && !isGone(r) ? `<button class="btn pri" data-act="new-move" data-rid="${r.id}">${ic('plus')} פתח תנועה</button>` : ''; } },
   followup: { name: 'מעקב טיפול', icon: 'check', coll: 'followup', prefix: 'FU', write: 'clinical.edit', lock: true,
     fields: [{ k: 'at', label: 'תאריך', type: 'date', req: 1 }, { k: 'discipline', label: 'תחום', type: 'select', opts: DISCIPLINES, req: 1 }, { k: 'goal', label: 'מטרה', type: 'text', req: 1 },
       { k: 'action', label: 'פעולה שבוצעה', type: 'textarea', req: 1 }, { k: 'status', label: 'סטטוס', type: 'select', opts: FU_STATUS, req: 1 }],
@@ -4008,7 +4033,7 @@ window.addEventListener('hashchange', () => {
   if (me()) { if (!UI.route) { history.replaceState(null, '', '#/' + homeRoute()); parseHash(); } }
   else UI.deepLink = UI.loggedOutIdle ? null : deepLinkOf();
   UI.lastHash = location.hash; render();
-  setInterval(() => { tick(); checkIdle(); followCurrentRound(); }, 15000);
+  setInterval(() => { tick(); checkIdle(); if (me() && applyDueMovements()) { save(); renderNav(); if (!UI.dirty && !UI.panel) renderMain(); } followCurrentRound(); }, 15000);
   setInterval(() => { if (me() && !UI.dirty) renderNav(); }, 60000);
 })();
 </script>
