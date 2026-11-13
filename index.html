@@ -78,6 +78,10 @@ svg.i{width:18px;height:18px;flex:none;vertical-align:middle}
 .gresults button{display:flex;width:100%;gap:10px;align-items:center;border:0;background:none;text-align:start;padding:8px 10px;border-radius:8px;min-height:44px}
 .gresults button[aria-selected="true"],.gresults button:hover{background:var(--accent-soft)}
 .gresults .empty-s{padding:12px;color:var(--muted)}
+.rpick .gresults{top:calc(100% + 4px)}
+.rpick{position:relative;display:flex;flex-direction:column}
+.rchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;order:-1}
+.rchips:empty{display:none}
 .top .sp{flex:1}
 .clock{font-weight:700;font-size:17px;white-space:nowrap}
 .me{display:flex;align-items:center;gap:8px;font-size:14px;white-space:nowrap}
@@ -1205,7 +1209,53 @@ function shiftWindow(date, shift) {
 const roundShiftNow = () => minOfDay() < hm2min(S.settings.round_evening_from) ? 'morning' : 'evening';
 const residentLabel = r => `${r.apartment} · ${fullName(r)}`;
 function residentFromLabel(v) { v = String(v || '').trim(); if (!v) return null; return S.residents.find(r => residentLabel(r) === v) || S.residents.find(r => norm(fullName(r)) === norm(v)) || null; }
-function residentDatalist(id = 'dl-res', includeGone = false) { return `<datalist id="${id}">${S.residents.filter(r => includeGone || !isGone(r)).sort(sortApt).map(r => `<option value="${esc(residentLabel(r))}"></option>`).join('')}</datalist>`; }
+/* Shared resident typeahead (movement, shift report, service call, incident). Typing only rewrites the dropdown, never renderPanel(). */
+function residentMatches(q, exclude = []) {
+  const n = norm(q); if (!n) return [];
+  return S.residents.filter(r => !isGone(r) && !exclude.includes(r.id) && (norm(r.first_name).includes(n) || norm(r.last_name).includes(n) || norm(fullName(r)).includes(n) || norm(r.last_name + r.first_name).includes(n) || norm(r.apartment).startsWith(n) || norm(r.demo_id).includes(n))).sort(sortApt);
+}
+const rpChip = r => `<span class="chip acc">${esc(residentLabel(r))} <button type="button" class="linkbtn" data-act="rpick-remove" data-id="${r.id}" aria-label="הסרת ${esc(fullName(r))}">×</button></span>`;
+function residentPicker(o) { // the text input comes first in the DOM (chips are shown above it with CSS order) so a click on the label focuses the input, not a chip's × button
+  const k = o.key, rs = (o.ids || []).map(res).filter(Boolean), one = !o.multi && rs[0];
+  return fld(o.label, `<div class="rpick" data-rpick="${k}" data-multi="${o.multi ? 1 : 0}" data-onpick="${o.onPick || ''}"><input type="text" name="${k}_q" role="combobox" aria-label="${esc(o.label)}" aria-autocomplete="list" aria-expanded="false" aria-controls="rp-${k}-list" aria-activedescendant="" autocomplete="off" data-in="rpick" placeholder="הקלידו שם, דירה או מזהה הדגמה" value="${one ? esc(residentLabel(one)) : ''}"${o.autofocus ? ' autofocus' : ''}>${o.multi ? `<div class="rchips">${rs.map(rpChip).join('')}</div>` : ''}<input type="hidden" name="${k}_${o.multi ? 'ids' : 'id'}" value="${o.multi ? rs.map(r => r.id).join(',') : one ? one.id : ''}"><div class="gresults rpick-list" id="rp-${k}-list" role="listbox" hidden></div></div>`, k, o.req, o.hint);
+}
+const rpParts = wrap => ({ q: $('[data-in="rpick"]', wrap), box: $('.rpick-list', wrap), h: $('input[type="hidden"]', wrap), multi: wrap.dataset.multi === '1' });
+const rpIds = wrap => rpParts(wrap).h.value.split(',').filter(Boolean);
+function rpRender(wrap) {
+  const { q, box, multi } = rpParts(wrap), k = wrap.dataset.rpick, v = q.value.trim(), all = v ? residentMatches(v, multi ? rpIds(wrap) : []) : [], shown = all.slice(0, 20);
+  wrap.dataset.sel = '0';
+  box.innerHTML = shown.map((r, i) => `<button type="button" role="option" id="rp-${k}-opt-${i}" tabindex="-1" data-act="rpick-pick" data-id="${r.id}" aria-selected="${i === 0}"><b>${esc(residentLabel(r))}</b> <small class="muted num">${esc(r.demo_id)}</small></button>`).join('')
+    + (all.length > 20 ? '<div class="empty-s">מוצגות 20 ראשונות – הקלידו לחיפוש מדויק יותר</div>' : '') + (v && !all.length ? '<div class="empty-s">לא נמצאו דיירים תואמים</div>' : '');
+  box.hidden = !v; q.setAttribute('aria-expanded', String(!!v)); q.setAttribute('aria-activedescendant', shown.length ? `rp-${k}-opt-0` : '');
+}
+function rpClose(wrap) { const { q, box } = rpParts(wrap); if (box) box.hidden = true; q?.setAttribute('aria-expanded', 'false'); q?.setAttribute('aria-activedescendant', ''); }
+function rpPick(wrap, id) {
+  const r = res(id), { q, h, multi } = rpParts(wrap); if (!r || !q || !h) return;
+  if (multi) { const ids = rpIds(wrap); if (!ids.includes(id)) { ids.push(id); $('.rchips', wrap).insertAdjacentHTML('beforeend', rpChip(r)); } h.value = ids.join(','); q.value = ''; }
+  else { h.value = id; q.value = residentLabel(r); }
+  rpClose(wrap); q.focus();
+  if (wrap.dataset.onpick === 'call-res') callResFill(q.form, r);
+  if (wrap.closest('form[data-dirty]')) UI.dirty = true;
+}
+function rpRemove(wrap, id) {
+  const { q, h } = rpParts(wrap); h.value = rpIds(wrap).filter(x => x !== id).join(',');
+  $(`.rchips [data-id="${id}"]`, wrap)?.closest('.chip')?.remove(); rpClose(wrap); q.focus();
+  if (wrap.closest('form[data-dirty]')) UI.dirty = true;
+}
+function rpKey(ev) { // returns true when it handled the key
+  const q = ev.target; if (q.dataset?.in !== 'rpick') return false;
+  const wrap = q.closest('.rpick'), { box, multi } = rpParts(wrap), items = $$('[data-act="rpick-pick"]', box), open = !box.hidden;
+  if (open && items.length && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {
+    ev.preventDefault(); const s = Math.max(0, Math.min(items.length - 1, (+wrap.dataset.sel || 0) + (ev.key === 'ArrowDown' ? 1 : -1))); wrap.dataset.sel = String(s);
+    items.forEach((b, i) => b.setAttribute('aria-selected', String(i === s))); q.setAttribute('aria-activedescendant', items[s].id); items[s].scrollIntoView?.({ block: 'nearest' }); return true;
+  }
+  if (open && items.length && ev.key === 'Enter') { ev.preventDefault(); rpPick(wrap, items[+wrap.dataset.sel || 0].dataset.id); return true; }
+  if (open && ev.key === 'Escape') { ev.preventDefault(); rpClose(wrap); return true; }
+  if (open && ev.key === 'Tab') { rpClose(wrap); return false; }
+  if (ev.key === 'Backspace' && multi && !q.value) { const ids = rpIds(wrap); if (ids.length) { ev.preventDefault(); rpRemove(wrap, ids.at(-1)); return true; } }
+  return false;
+}
+function callResFill(form, r) { const loc = form?.elements.location; if (r && loc && (!loc.value || /^דירה /.test(loc.value))) loc.value = 'דירה ' + r.apartment; }
 
 /* ---------- UI state, router, rendering ---------- */
 const UI = { route: 'round', params: [], query: {}, panel: null, f: {}, open: {}, confirm: null, edit: null, dirty: false, gq: '', gsel: 0, loginUser: null, loggedOutIdle: false, deepLink: null };
@@ -1366,7 +1416,7 @@ function showErrors(form, errs) {
   let first = null;
   for (const [k, msg] of Object.entries(errs)) {
     const box = form.querySelector(`.err[data-for="${k}"]`); if (box) box.textContent = msg;
-    for (const el of form.querySelectorAll(`[name="${k}"],[name="${k}__d"],[name="${k}__t"]`)) { el.classList.add('inv'); first ||= el; }
+    for (const el of form.querySelectorAll(`[name="${k}"],[name="${k}__d"],[name="${k}__t"],[name="${k}_q"]`)) { el.classList.add('inv'); first ||= el; }
   }
   if (first) first.focus(); else if (Object.keys(errs).length) toast(Object.values(errs)[0]);
   return !Object.keys(errs).length;
@@ -1945,7 +1995,7 @@ function panelMove(p) {
   const r = p.rid && res(p.rid);
   return `<div class="p-h"><div><h2>תנועה חדשה</h2><div class="meta">יציאה, אשפוז, חופשה, עזיבה או פטירה</div></div><button class="x" data-act="close-panel" aria-label="סגירה">${ic('x')}</button></div>
   <div class="p-b"><form class="form" data-submit="move" autocomplete="off">
-    ${fld('דייר/ת', `<input name="resident" type="text" list="dl-res" value="${r ? esc(residentLabel(r)) : ''}" placeholder="הקלידו שם או דירה" ${r ? '' : 'autofocus'}>${residentDatalist()}`, 'resident', 1)}
+    ${residentPicker({ key: 'resident', label: 'דייר/ת', req: 1, ids: r ? [r.id] : [], autofocus: !r })}
     ${fld('סוג תנועה', `<select name="type" ${r ? 'autofocus' : ''}>${opt('', 'בחרו…', '')}${MOVE_TYPES.filter(t => t.id !== 'admission' || !admissionOf(r)).map(t => opt(t.id, t.name, '')).join('')}</select>`, 'type', 1)}
     <div data-when="type:left|deceased" class="note-inline red">תנועה זו מסמנת את הדייר/ת כ"עזב" / "נפטר" ומוציאה אותו/ה מכל הסבבים הבאים. אין תנועת סגירה.</div>
     <div class="frow">${fld('התחלה – תאריך ושעה', dtIn('start', isoToWall(nowIso())), 'start', 1)}
@@ -1957,7 +2007,7 @@ function panelMove(p) {
   </form></div>`;
 }
 function saveMove(form) {
-  const d = readForm(form), e = {}, r = residentFromLabel(d.resident);
+  const d = readForm(form), e = {}, r = res(d.resident_id) || residentFromLabel(d.resident_q);
   if (!r) e.resident = 'בחרו דייר/ת מהרשימה'; if (!d.type) e.type = 'בחרו סוג';
   if (!d.start) e.start = 'שדה חובה';
   if (r && d.type && ['hospital', 'vacation', 'away'].includes(d.type) && openMove(r.id)) e.type = `ל${fullName(r)} כבר יש תנועה פתוחה (${MT[openMove(r.id).type].name}). קודם סמנו חזרה.`;
@@ -2177,7 +2227,7 @@ function panelNote(p) {
   <div class="p-b"><form class="form" data-submit="note" data-id="${n ? n.id : ''}" data-correct="${corr ? corr.id : ''}" autocomplete="off">
     ${corr ? `<p class="hint">דיווח מקורי (${fT(corr.at)}): ${esc(corr.text)}</p>` : ''}
     ${fld('טקסט', `<textarea name="text" autofocus rows="4">${esc(n ? n.text : '')}</textarea>`, 'text', 1)}
-    ${fld('דייר/ת (רשות)', `<input name="resident" type="text" list="dl-res2" value="${r ? esc(residentLabel(r)) : ''}" placeholder="הקלידו שם או דירה">${residentDatalist('dl-res2')}`, 'resident')}
+    ${residentPicker({ key: 'resident', label: 'דייר/ת (רשות)', ids: r ? [r.id] : [] })}
     <div class="frow">${fld('יחידה', `<select name="unit_id">${opt('', 'כללי – כל הבית', base.unit_id || (r ? r.unit_id : ''))}${S.units.map(u => opt(u.id, u.label, base.unit_id || (r ? r.unit_id : ''))).join('')}</select>`, 'unit_id')}
       ${fld('נושא', `<select name="subject">${SUBJECTS.map(s => opt(s, s, base.subject || 'כללי')).join('')}</select>`, 'subject')}</div>
     <label class="cb"><input type="checkbox" name="needs_action" ${base.needs_action ? 'checked' : ''}> דורש טיפול</label>
@@ -2186,8 +2236,8 @@ function panelNote(p) {
   </form></div>`;
 }
 function saveNote(form) {
-  const d = readForm(form), e = {}; const r = d.resident ? residentFromLabel(d.resident) : null;
-  if (!d.text || d.text.length < 2) e.text = 'כתבו את תוכן הדיווח'; if (d.resident && !r) e.resident = 'בחרו דייר/ת מהרשימה או השאירו ריק';
+  const d = readForm(form), e = {}; const r = res(d.resident_id) || (d.resident_q ? residentFromLabel(d.resident_q) : null);
+  if (!d.text || d.text.length < 2) e.text = 'כתבו את תוכן הדיווח'; if (d.resident_q && !r) e.resident = 'בחרו דייר/ת מהרשימה או השאירו ריק';
   if (!showErrors(form, e)) return;
   const id = form.dataset.id, ws = workShiftAt();
   if (id) { const n = byId(S.handover_notes, id); if (Date.now() - Date.parse(n.at) > 15 * 60000) { toast('עברו 15 דקות – אפשר רק לכתוב תיקון'); return; } Object.assign(n, { text: d.text, resident_id: r?.id || null, unit_id: d.unit_id || null, subject: d.subject, needs_action: !!d.needs_action, assignee: d.needs_action ? d.assignee || null : null }); stamp(n); }
@@ -2256,7 +2306,7 @@ function panelCall(p) {
       <dt>בוצעה</dt><dd class="num">${fDT(c.done_at) || '—'}</dd><dt>נסגרה</dt><dd class="num">${fDT(c.closed_at) || '—'}${c.closed_at ? ` <span class="muted">(${durTxt(Date.parse(c.closed_at) - Date.parse(c.opened_at))})</span>` : ''}</dd>${c.cancel_reason ? `<dt>סיבת ביטול</dt><dd>${esc(c.cancel_reason)}</dd>` : ''}</dl></div>`;
   }
   const form = canEdit ? `<form class="form" data-submit="call" data-id="${c ? c.id : ''}" autocomplete="off">
-    ${fld('דייר/ת (רשות)', `<input name="resident" type="text" list="dl-res3" value="${r ? esc(residentLabel(r)) : ''}" placeholder="הקלידו שם או דירה" data-in="call-res">${residentDatalist('dl-res3')}`, 'resident', 0, 'בחירת דייר ממלאת את המיקום')}
+    ${residentPicker({ key: 'resident', label: 'דייר/ת (רשות)', hint: 'בחירת דייר ממלאת את המיקום', ids: r ? [r.id] : [], onPick: 'call-res' })}
     ${fld('מיקום', `<input name="location" type="text" list="dl-loc" value="${esc(c ? c.location : r ? 'דירה ' + r.apartment : '')}" placeholder="דירה או שטח משותף" ${r || c ? '' : 'autofocus'}><datalist id="dl-loc">${COMMON_AREAS.map(a => `<option value="${a}">`).join('')}${S.units.flatMap(u => u.apartments).map(a => `<option value="דירה ${a}">`).join('')}</datalist>`, 'location', 1)}
     <div class="frow">${fld('קטגוריה', `<select name="category_id" data-ch="call-cat" ${r && !c ? 'autofocus' : ''}>${opt('', 'בחרו…', c?.category_id)}${cats.map(x => opt(x.id, x.name, c?.category_id)).join('')}</select>`, 'category_id', 1)}
       ${fld('דחיפות', `<select name="urgency">${opts(URG, c?.urgency || 'normal')}</select>`, 'urgency', 1)}</div>
@@ -2269,8 +2319,8 @@ function panelCall(p) {
   return head + `<div class="p-b">${flow}${form}${hist}</div>`;
 }
 function saveCall(form) {
-  const d = readForm(form), e = {}, r = d.resident ? residentFromLabel(d.resident) : null;
-  if (d.resident && !r) e.resident = 'בחרו דייר/ת מהרשימה או השאירו ריק';
+  const d = readForm(form), e = {}, r = res(d.resident_id) || (d.resident_q ? residentFromLabel(d.resident_q) : null);
+  if (d.resident_q && !r) e.resident = 'בחרו דייר/ת מהרשימה או השאירו ריק';
   if (!d.location) e.location = 'שדה חובה'; if (!d.category_id) e.category_id = 'בחרו קטגוריה'; if (!d.description || d.description.length < 3) e.description = 'תיאור של 3 תווים לפחות';
   if (!showErrors(form, e)) return;
   const k = cat(d.category_id), aptM = d.location.match(/(\d{3})/), unit = r ? unitOf(r) : aptM ? S.units.find(u => u.apartments.includes(aptM[1])) : null;
@@ -2312,7 +2362,6 @@ function viewEvents() {
 }
 function eventForm(e, p) {
   const x = e || { resident_ids: p.rids || [], type_id: '', occurred_at: nowIso(), location: '', description: '', severity: 'none', notifications: [], ...(p.prefill || {}) };
-  const rlist = x.resident_ids.map(res).filter(Boolean);
   const notifyRows = t => evType(t).notify.map(nn => { const cur = x.notifications.find(z => z.to === nn.to) || {}; return `<div class="actions"><label class="cb"><input type="checkbox" name="ntf_${nn.to}" ${cur.done ? 'checked' : ''}> ${esc(NOTIFY_TO[nn.to])}</label><span class="hint">תוך ${nn.within_min >= 60 ? nn.within_min / 60 + ' שעות' : nn.within_min + ' דקות'}</span><input type="text" inputmode="numeric" data-time placeholder="00:00" maxlength="5" name="ntft_${nn.to}" value="${cur.at ? fT(cur.at) : ''}" aria-label="שעת עדכון"></div>`; }).join('');
   return `<form class="form" data-submit="event" data-id="${e ? e.id : ''}" data-fall="${esc(p?.fall_id || '')}" autocomplete="off">
     ${p?.fall_id ? `<p class="note-inline info">אירוע חריג מתוך דיווח נפילה – הפרטים מולאו מהדיווח. אחרי השמירה האירוע יקושר לדיווח.</p>` : ''}
@@ -2322,7 +2371,7 @@ function eventForm(e, p) {
       <div data-when="police:no">${fld('סיבת אי-דיווח', `<input name="police_reason" type="text" value="${esc(x.police_reason || '')}">`, 'police_reason', 1)}</div><span class="err" data-for="police"></span></div>
     <div class="frow">${fld('תאריך ושעה', dtIn('occurred_at', isoToWall(x.occurred_at)), 'occurred_at', 1)}
       ${fld('מיקום', `<input name="location" type="text" list="dl-loc2" value="${esc(x.location)}" placeholder="דירה, חדר אוכל…"><datalist id="dl-loc2">${COMMON_AREAS.map(a => `<option value="${a}">`).join('')}</datalist>`, 'location', 1)}</div>
-    ${fld('דייר/ים מעורבים', `<input name="residents" type="text" list="dl-res4" value="${esc(rlist.map(residentLabel).join('; '))}" placeholder="שם או דירה; אפשר כמה, מופרדים ב-;">${residentDatalist('dl-res4')}`, 'residents', 1)}
+    ${residentPicker({ key: 'residents', label: 'דייר/ים מעורבים', req: 1, multi: 1, ids: x.resident_ids })}
     ${fld('תיאור עובדתי', `<textarea name="description" placeholder="מה קרה – עובדות בלבד">${esc(x.description)}</textarea>`, 'description', 1)}
     ${fld('חומרה', `<select name="severity">${opts(SEVERITY, x.severity)}</select>`, 'severity')}
     <details class="more"><summary>פרטים נוספים (רשות)</summary><div class="form">
@@ -2375,16 +2424,17 @@ function panelEvent(p) {
 }
 function saveEvent(form, submitter) {
   const d = readForm(form), e = {}, go = submitter?.value || 'report';
-  const names = (d.residents || '').split(/[;\n]/).map(s => s.trim()).filter(Boolean), rs = names.map(residentFromLabel);
+  const ids = (d.residents_ids || '').split(',').filter(Boolean), typed = d.residents_q ? residentFromLabel(d.residents_q) : null;
+  if (typed && !ids.includes(typed.id)) ids.push(typed.id);
   if (!d.type_id) e.type_id = 'בחרו סוג אירוע'; if (!d.occurred_at) e.occurred_at = 'שדה חובה'; else if (Date.parse(wallToIso(d.occurred_at)) > Date.now() + 60000) e.occurred_at = 'האירוע לא יכול להיות בעתיד';
-  if (!d.location) e.location = 'שדה חובה'; if (!names.length) e.residents = 'בחרו לפחות דייר/ת אחד/ת'; else if (rs.some(x => !x)) e.residents = 'אחד השמות לא נמצא – בחרו מהרשימה';
+  if (!d.location) e.location = 'שדה חובה'; if (d.residents_q && !typed) e.residents = 'אחד השמות לא נמצא – בחרו מהרשימה'; else if (!ids.length) e.residents = 'בחרו לפחות דייר/ת אחד/ת';
   if (!d.description || d.description.length < 3) e.description = 'כתבו תיאור עובדתי קצר';
   if (go === 'report' && d.type_id === 'E_VIOLENCE') { if (!d.police) e.police = 'סמנו "דווח" או "לא דווח"'; else if (d.police === 'no' && !d.police_reason) e.police_reason = 'כתבו את סיבת אי-הדיווח'; }
   if (go === 'draft') { for (const k of Object.keys(e)) if (k !== 'type_id') delete e[k]; }
   if (!showErrors(form, e)) return;
   const dk = d.occurred_at ? d.occurred_at.slice(0, 10) : today(), tm = v => v ? at(dk, v) : null;
   const notif = evType(d.type_id).notify.map(nn => ({ to: nn.to, done: !!d['ntf_' + nn.to], at: d['ntf_' + nn.to] ? (tm(d['ntft_' + nn.to]) || nowIso()) : null }));
-  const data = { type_id: d.type_id, occurred_at: d.occurred_at ? wallToIso(d.occurred_at) : nowIso(), location: d.location, resident_ids: rs.filter(Boolean).map(r => r.id), description: d.description, severity: d.severity,
+  const data = { type_id: d.type_id, occurred_at: d.occurred_at ? wallToIso(d.occurred_at) : nowIso(), location: d.location, resident_ids: ids, description: d.description, severity: d.severity,
     immediate_actions: d.immediate_actions || '', injury: !!d.injury, injury_desc: d.injury_desc || '', hospital_transfer: !!d.hospital_transfer, witnesses: d.witnesses || '', near_miss: !!d.near_miss || d.type_id === 'E_NEAR',
     family_notified: !!d.family_notified, family_notified_at: d.family_notified ? tm(d.family_notified_at) || nowIso() : null, doctor_notified: !!d.doctor_notified, doctor_notified_at: d.doctor_notified ? tm(d.doctor_notified_at) || nowIso() : null,
     notifications: notif, police_reported: d.type_id === 'E_VIOLENCE' ? (d.police === 'yes' ? true : d.police === 'no' ? false : null) : null, police_reason: d.police === 'no' ? d.police_reason : '' };
@@ -3526,6 +3576,8 @@ const ACT = {
   'facility-logo-reset': () => { if (!may('settings.all')) return; S.settings.facility_logo = ''; save(); render(); toast('הלוגו הוחזר לברירת המחדל'); },
   'ref-print': el => { if (!may('clinical.view')) return; openPanel({ type: 'refletter', id: el.dataset.id }); setTimeout(() => { document.body.classList.add('print-panel'); window.print(); }, 50); },
   'dx-pick': el => dxPick(+el.dataset.i),
+  'rpick-pick': el => { const w = el.closest('.rpick'); if (w) rpPick(w, el.dataset.id); },
+  'rpick-remove': el => { const w = el.closest('.rpick'); if (w) rpRemove(w, el.dataset.id); },
   'move-edit': el => { if (!may('mov.create')) return; openPanel({ type: 'moveedit', id: el.dataset.id }); },
   'adm-edit': el => { UI.open.adm = el.dataset.id; renderMain(); setTimeout(() => $('#adm-date')?.focus(), 0); },
   'adm-cancel': () => { UI.open.adm = null; renderMain(); },
@@ -3638,10 +3690,10 @@ function cancelEdit() {
 const IN = {
   gsearch: () => { UI.gsel = 0; renderGsearch(); },
   dx: () => { UI.dxsel = 0; dxRender(); },
+  rpick: el => { const w = el.closest('.rpick'); if (!w) return; if (w.dataset.multi !== '1') { rpParts(w).h.value = ''; if (w.dataset.onpick === 'call-res') callResFill(el.form, residentFromLabel(el.value)); } rpRender(w); },
   refpick: el => { const q = norm(el.value.trim()); let n = 0; for (const li of $$('#panel .refpick li')) { const k = li.dataset.k, ok = !q || k.includes(q); li.hidden = !ok; n += ok; } $('#refpick-none').hidden = !!n; },
   'round-q': el => { UI.f.round.q = el.value; renderMain(); },
   f: el => { let v = el.type === 'checkbox' ? el.checked : el.value; if (el.dataset.date != null) { if (v && !parseD(v)) { el.classList.add('inv'); return; } v = v ? parseD(v) : ''; } UI.f[el.dataset.view][el.dataset.k] = v; renderMain(); },
-  'call-res': el => { const r = residentFromLabel(el.value), loc = el.form.elements.location; if (r && (!loc.value || /^דירה /.test(loc.value))) loc.value = 'דירה ' + r.apartment; },
   'cc-count': el => { // live discrepancy per row and a summary
     const v = el.value.trim(), exp = +el.dataset.exp, cell = $('#ccd-' + el.dataset.reg);
     if (cell) cell.innerHTML = v === '' ? '—' : ccIntRe.test(v) ? ccDiffChip(+v, exp) : '<span class="chip warn">מספר שלם</span>';
@@ -3794,6 +3846,7 @@ const SUB = {
 
 document.addEventListener('click', ev => {
   if ($('#dx-res') && !ev.target.closest('#dx-q, #dx-res')) dxClose();
+  for (const w of $$('.rpick')) if (!w.contains(ev.target)) rpClose(w);
   const el = ev.target.closest('[data-act]'); if (!el) { if (!ev.target.closest('.gsearch')) $('#gres') && ($('#gres').hidden = true); return; }
   const stop = ev.target.closest('a[href],[data-stop]'); if (stop && stop !== el && el.contains(stop)) return;
   if (el.tagName === 'A') ev.preventDefault();
@@ -3827,6 +3880,7 @@ document.addEventListener('keydown', ev => {
     if (open && ev.key === 'Escape') { ev.preventDefault(); dxClose(); return; }
     if (open && ev.key === 'Tab') dxClose();
   }
+  if (rpKey(ev)) return;
   if (ev.key === 'Escape' && UI.modal) { closeModal(true); return; }
   if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && (ev.key === 'z' || ev.key === 'ז' || ev.code === 'KeyZ') && UI.lastMark && Date.now() <= UI.lastMark.until && !/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) { ev.preventDefault(); ACT['self-undo'](); return; }
   if (ev.key === 'Escape') { if (UI.confirm) { UI.confirm = null; renderMain(); renderPanel(); } else if (UI.open.visit || UI.open.ng || UI.open.undo || UI.open.adm || UI.open.ack || UI.open.prnfix) { UI.open.visit = UI.open.ng = UI.open.undo = UI.open.adm = UI.open.ack = UI.open.prnfix = null; renderMain(); } else if (UI.panel) closePanel(); return; }
@@ -3835,6 +3889,7 @@ document.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && ev.target.id === 'undo-reason') { ev.preventDefault(); $('[data-act="undo-loc"]')?.click(); }
   if (ev.key === 'Enter' && ev.target.id === 'close-note') { ev.preventDefault(); $('[data-act="close-round"]')?.click(); }
 });
+document.addEventListener('mousedown', ev => { if (ev.target.closest?.('.rpick-list')) ev.preventDefault(); });
 for (const t of ['pointerdown', 'touchstart', 'wheel']) document.addEventListener(t, touch, { passive: true });
 window.addEventListener('afterprint', () => document.body.classList.remove('print-summary', 'print-panel'));
 window.addEventListener('beforeunload', ev => { if (UI.dirty) { ev.preventDefault(); ev.returnValue = ''; } });
