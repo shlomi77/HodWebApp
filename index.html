@@ -3227,7 +3227,7 @@ function dxRender() {
   const v = q.value.trim(), list = v ? dxSearch(v) : [], shown = list.slice(0, 20); UI.dxres = shown; UI.dxsel = Math.min(UI.dxsel || 0, Math.max(0, shown.length - 1));
   box.innerHTML = shown.map((x, i) => `<button type="button" role="option" id="dx-o${i}" data-act="dx-pick" data-i="${i}" aria-selected="${i === UI.dxsel}"><b>${esc(x.name)}</b><small class="muted num">${esc(x.code)}</small></button>`).join('') + (list.length > 20 ? '<div class="empty-s">מוצגות 20 ראשונות – הקלידו לחיפוש מדויק יותר</div>' : '');
   box.hidden = !shown.length; q.setAttribute('aria-expanded', String(!!shown.length));
-  hint.textContent = !v ? DX_HINT0() : dxExact(v) ? '' : 'לא נמצא בקטלוג — יישמר כטקסט חופשי';
+  hint.textContent = !v ? DX_HINT0() : (dxExact(v) || list.length) ? '' : 'לא נמצא בקטלוג — יישמר כטקסט חופשי';
 }
 function dxPick(i) {
   const x = UI.dxres?.[i], q = $('#dx-q'); if (!x || !q) return; const f = q.form;
@@ -3238,7 +3238,7 @@ function dxClose() { const box = $('#dx-res'); if (box) box.hidden = true; $('#d
 function dxInit() { // an existing record with no code but a catalog name: suggest the code in the input only (stored on save)
   const q = $('#dx-q'); if (!q) return; const code = q.form.elements.code, x = q.value.trim() && dxExact(q.value);
   if (x && code && !code.value.trim()) { code.value = x.code; $('#dx-hint').textContent = 'הקוד הוצע מהקטלוג – אפשר למחוק'; }
-  else if (q.value.trim() && !x) $('#dx-hint').textContent = 'לא נמצא בקטלוג — יישמר כטקסט חופשי';
+  else if (q.value.trim() && !x && !dxSearch(q.value.trim()).length) $('#dx-hint').textContent = 'לא נמצא בקטלוג — יישמר כטקסט חופשי';
 }
 
 /* R13 (D2, D14, D15): locked records are never edited; a correction is a new linked record and the original only gains superseded_by */
